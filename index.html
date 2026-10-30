@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chicken of the Sea: Brand Review</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --card: #ffffff; --text: #1b2430; --muted: #5b6675; --line: #dde2e9;
+    --accent: #0b4f8a;
+    --notyet: #6b7280; --confirmed: #1a7f4b; --mixed: #b7791f; --busted: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12171d; --card: #1a212a; --text: #e8edf3; --muted: #98a3b1; --line: #2c3541;
+      --accent: #5aa9f0;
+      --notyet: #8b95a3; --confirmed: #3fbf80; --mixed: #e0a63a; --busted: #ec6b5c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-size: 2rem; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); margin: 0 0 28px; }
+  h2 { font-size: 1.25rem; margin: 0 0 4px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+            padding: 20px 22px; margin-bottom: 18px; }
+  .hint { color: var(--muted); font-size: .9rem; margin: 0; }
+  .placeholder { color: var(--muted); font-style: italic; margin: 10px 0 0; }
+
+  /* Plan on trial list */
+  .moves { list-style: none; margin: 14px 0 0; padding: 0; }
+  .move { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .move:first-child { border-top: none; }
+  .move-num { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--accent);
+              color: #fff; display: grid; place-items: center; font-weight: 600; font-size: .9rem; }
+  .move-text { flex: 1; min-width: 0; }
+  .move-title { font-weight: 600; }
+  .move-desc { color: var(--muted); font-size: .92rem; }
+  .verdict { flex: none; min-width: 108px; padding: 7px 12px; border-radius: 999px; cursor: pointer;
+             border: 2px solid currentColor; background: transparent; font: inherit; font-weight: 600;
+             font-size: .88rem; }
+  .verdict:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .verdict[data-state="Not yet"]   { color: var(--notyet); }
+  .verdict[data-state="Confirmed"] { color: var(--confirmed); }
+  .verdict[data-state="Mixed"]     { color: var(--mixed); }
+  .verdict[data-state="Busted"]    { color: var(--busted); }
+  .legend { margin-top: 12px; }
+  @media (max-width: 560px) { .move { flex-wrap: wrap; } .verdict { margin-left: 42px; } }
+</style>
+</head>
+<body>
+<main>
+
+  <h1>Chicken of the Sea: Brand Review</h1>
+  <p class="subtitle">We are testing the FY2027 marketing plan against the data.</p>
+
+  <section id="plan-on-trial">
+    <h2>Plan on trial</h2>
+    <p class="hint">Click a verdict to cycle: Not yet, Confirmed, Mixed, Busted. Your choices are saved in this browser.</p>
+    <ol class="moves" id="moves"></ol>
+  </section>
+
+  <!-- CASE1:START -->
+  <section id="case1">
+    <h2>Case 1: Who is talking about us, and where?</h2>
+    <p class="placeholder">Coming next.</p>
+  </section>
+  <!-- CASE1:END -->
+
+  <!-- CASE2:START -->
+  <section id="case2">
+    <h2>Case 2: What do people think of us vs rivals?</h2>
+    <p class="placeholder">Coming next.</p>
+  </section>
+  <!-- CASE2:END -->
+
+  <!-- CASE3:START -->
+  <section id="case3">
+    <h2>Case 3: Did the July tariff hurt us?</h2>
+    <p class="placeholder">Coming next.</p>
+  </section>
+  <!-- CASE3:END -->
+
+  <!-- CASE4:START -->
+  <section id="case4">
+    <h2>Case 4: What is squeezing us?</h2>
+    <p class="placeholder">Coming next.</p>
+  </section>
+  <!-- CASE4:END -->
+
+  <!-- PLAN:START -->
+  <section id="plan-vs-data">
+    <h2>Plan vs data: What should change?</h2>
+    <p class="placeholder">Coming next.</p>
+  </section>
+  <!-- PLAN:END -->
+
+  <!-- FINALE:START -->
+  <section id="finale">
+    <h2>Finale</h2>
+    <p class="placeholder">Coming next.</p>
+  </section>
+  <!-- FINALE:END -->
+
+</main>
+
+<script src="data.js"></script>
+<script>
+  // ---- Plan on trial: the five moves from the FY2027 plan brief ----
+  const MOVES = [
+    { id: 'social',   title: 'Go social-first',        desc: 'Move 60% of media to Instagram and TikTok.' },
+    { id: 'sustain',  title: 'Lead with sustainability', desc: 'A "Responsibly Sourced" campaign becomes the hero message.' },
+    { id: 'price',    title: 'Take price',              desc: '+8% list price on core tuna in Q1; shoppers will absorb it.' },
+    { id: 'premium',  title: 'Go premium',              desc: 'Launch "Chicken of the Sea Reserve" to compete with Fishwife.' },
+    { id: 'defend',   title: 'Defend the core',         desc: 'Value packs and a loyalty program against store brands.' }
+  ];
+  const STATES = ['Not yet', 'Confirmed', 'Mixed', 'Busted'];
+  const STORE_KEY = 'cots-verdicts';
+
+  // Saved verdicts survive a refresh (stored in this browser only)
+  function loadVerdicts() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { return {}; }
+  }
+  function saveVerdicts(v) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(v)); } catch (e) { /* storage blocked: still works this session */ }
+  }
+  const verdicts = loadVerdicts();
+
+  function renderMoves() {
+    const list = document.getElementById('moves');
+    list.innerHTML = '';
+    MOVES.forEach((m, i) => {
+      const state = STATES.includes(verdicts[m.id]) ? verdicts[m.id] : STATES[0];
+      const li = document.createElement('li');
+      li.className = 'move';
+      li.innerHTML =
+        '<span class="move-num">' + (i + 1) + '</span>' +
+        '<span class="move-text"><span class="move-title">' + m.title + '</span><br>' +
+        '<span class="move-desc">' + m.desc + '</span></span>';
+      const btn = document.createElement('button');
+      btn.className = 'verdict';
+      btn.type = 'button';
+      btn.dataset.state = state;
+      btn.textContent = state;
+      btn.setAttribute('aria-label', m.title + ' verdict: ' + state + '. Click to change.');
+      btn.addEventListener('click', () => {
+        const next = STATES[(STATES.indexOf(btn.dataset.state) + 1) % STATES.length];
+        verdicts[m.id] = next;
+        saveVerdicts(verdicts);
+        btn.dataset.state = next;
+        btn.textContent = next;
+        btn.setAttribute('aria-label', m.title + ' verdict: ' + next + '. Click to change.');
+      });
+      li.appendChild(btn);
+      list.appendChild(li);
+    });
+  }
+  renderMoves();
+
+  // Case code is added in later steps
+  /* CASE1:JS:START */ /* CASE1:JS:END */
+</script>
+</body>
+</html>
