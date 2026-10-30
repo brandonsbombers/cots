@@ -220,8 +220,49 @@
 
   <!-- CASE4:START -->
   <section id="case4">
+    <style>
+      #case4 h3 { font-size: 1.05rem; margin: 26px 0 6px; }
+      #case4 .chart-box { position: relative; width: 100%; height: 360px; }
+      #case4 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin: 14px 0 4px; }
+      #case4 .tile { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+      #case4 .tile .lab { font-size: .82rem; color: var(--muted); margin: 0; }
+      #case4 .tile .val { font-size: 1.7rem; font-weight: 700; margin: 2px 0; }
+      #case4 .tile .sub { font-size: .85rem; color: var(--muted); margin: 0; }
+      #case4 ol.findings { padding-left: 22px; margin: 8px 0 0; }
+      #case4 ol.findings li { margin-bottom: 10px; }
+      #case4 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 12px; }
+      #case4 .chip { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent;
+                     color: var(--text); font: inherit; font-size: .88rem; cursor: pointer; }
+      #case4 .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+      #case4 .chip:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+      #case4 .drill-title { font-weight: 600; margin: 6px 0 0; }
+      #case4 .stats { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .9rem; color: var(--muted); margin: 4px 0 10px; }
+      #case4 .scroll { overflow-x: auto; }
+      #case4 table.promo { border-collapse: collapse; width: 100%; min-width: 520px; font-size: .9rem; }
+      #case4 table.promo th, #case4 table.promo td { padding: 8px; border-top: 1px solid var(--line); text-align: left; vertical-align: middle; }
+      #case4 table.promo thead th { border-top: none; font-size: .82rem; color: var(--muted); font-weight: 600; }
+      #case4 .dtrack { display: inline-block; vertical-align: middle; width: 110px; height: 10px; background: var(--line); border-radius: 3px; margin-right: 8px; }
+      #case4 .dbar { display: block; height: 10px; background: #e08a2c; border-radius: 3px; }
+      #case4 .none { color: var(--muted); }
+    </style>
     <h2>Case 4: What is squeezing us?</h2>
-    <p class="placeholder">Coming next.</p>
+    <p class="hint">Monthly tuna cost index and store-brand (private label) share of the category. Click the chart, or pick a month below, to see that month's store-brand promotions.</p>
+
+    <div class="tiles" id="c4-tiles"></div>
+
+    <h3>Tuna cost index and store-brand share, by month</h3>
+    <div class="chart-box"><canvas id="c4-chart" role="img" aria-label="Line chart of the monthly tuna cost index and private label share of the category, with the tariff period shaded"></canvas></div>
+    <p class="hint">Both lines trend up, so they will look linked. Two rising series do not prove one drives the other. The shaded band is when the tariff on Thai imports was in effect.</p>
+
+    <h3>Findings</h3>
+    <ol class="findings" id="c4-findings"></ol>
+
+    <h3>Drill-down: store-brand promotions by retailer</h3>
+    <div class="chips" id="c4-chips"></div>
+    <p class="drill-title" id="c4-title"></p>
+    <div class="stats" id="c4-stats"></div>
+    <div class="scroll"><div id="c4-table"></div></div>
+    <p class="hint" id="c4-note"></p>
   </section>
   <!-- CASE4:END -->
 
@@ -892,6 +933,188 @@
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawChart);
 })();
 /* CASE3:JS:END */
+/* CASE4:JS:START */
+(function () {
+  const D = window.DATA;
+  const COS = 'Chicken of the Sea';
+  const MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const SHORT = { 'Walmart (bettergoods/Great Value)': 'Walmart', 'Target (Good & Gather)': 'Target', 'Costco (Kirkland Signature)': 'Costco' };
+  const short = b => SHORT[b] || b;
+
+  // ---- Helpers ----
+  const mshort = mo => { const p = mo.split('-'); return MN[+p[1] - 1] + " '" + p[0].slice(2); };
+  const mlong = mo => { const p = mo.split('-'); return MN[+p[1] - 1] + ' ' + p[0]; };
+  const dayOnly = s => { const d = new Date(s + 'T00:00:00Z'); return MN[d.getUTCMonth()] + ' ' + d.getUTCDate(); };
+  const pct = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%';
+  const sum = a => a.reduce((x, y) => x + y, 0);
+  const mean = a => sum(a) / a.length;
+  const r1 = x => Math.round(x * 10) / 10;
+
+  // ---- Monthly macro data ----
+  const macro = D.macro_monthly.slice().sort((a, b) => a.month < b.month ? -1 : 1);
+  const months = macro.map(r => r.month);
+  const n = months.length;
+  const cost = macro.map(r => r.tuna_cost_index);
+  const pl = macro.map(r => r.private_label_share_pct);
+  const tar = macro.map(r => r.us_tariff_pct_thai);
+  const cpi = macro.map(r => r.cpi_food_index);
+  const tStart = tar.findIndex(v => v > 0);                 // first month with a tariff
+  if (tStart < 2) { document.getElementById('c4-findings').textContent = 'Tariff months not found in the macro data.'; return; }
+  const pre = tStart - 1;                                    // last month before the tariff
+
+  // ---- Our price and share by month (from weekly sales) ----
+  const dAll = new Map(), dCos = new Map(), uCos = new Map();
+  D.sales_weekly.forEach(r => {
+    const mo = r.week_start.slice(0, 7);
+    dAll.set(mo, (dAll.get(mo) || 0) + r.dollars);
+    if (r.brand === COS) { dCos.set(mo, (dCos.get(mo) || 0) + r.dollars); uCos.set(mo, (uCos.get(mo) || 0) + r.units); }
+  });
+  const cosPrice = mo => dCos.get(mo) / uCos.get(mo);
+  const cosShare = mo => dCos.get(mo) / dAll.get(mo) * 100;
+
+  // ---- Store-brand promotions by month (by the week's start date) ----
+  const promoBy = new Map();
+  D.retail_promos_weekly.forEach(r => { const mo = r.week_start.slice(0, 7); if (!promoBy.has(mo)) promoBy.set(mo, []); promoBy.get(mo).push(r); });
+  const nPromo = mo => (promoBy.get(mo) || []).length;
+  const retailers = Array.from(new Set(D.retail_promos_weekly.map(r => r.retailer))).sort();
+  const rStats = retailers.map(rt => { const rows = D.retail_promos_weekly.filter(r => r.retailer === rt);
+    return { rt, n: rows.length, avg: mean(rows.map(r => r.discount_pct)), max: Math.max(...rows.map(r => r.discount_pct)) }; });
+  const rAvg = new Map(rStats.map(s => [s.rt, s.avg]));
+
+  // ---- Tiles ----
+  const costChg = cost[n - 1] / cost[0] - 1;
+  const tile = (lab, val, sub) => '<div class="tile"><p class="lab">' + lab + '</p><p class="val">' + val + '</p><p class="sub">' + sub + '</p></div>';
+  document.getElementById('c4-tiles').innerHTML =
+    tile('Tuna cost index', pct(costChg), cost[0].toFixed(1) + ' (' + mlong(months[0]) + ') to ' + cost[n - 1].toFixed(1) + ' (' + mlong(months[n - 1]) + ')') +
+    tile('Store-brand share of category', '+' + r1(pl[n - 1] - pl[0]).toFixed(1) + ' pts', pl[0].toFixed(1) + '% to ' + pl[n - 1].toFixed(1) + '%') +
+    tile('US tariff on Thai imports', tar[n - 1].toFixed(1) + '%', 'In effect from Jul 24 (monthly average: ' + tar[tStart].toFixed(1) + '% in ' + mlong(months[tStart]).slice(0, 3) + ')');
+
+  // ---- Findings (numbers computed from the data) ----
+  const preRise = cost[pre] - cost[0], postRise = cost[n - 1] - cost[pre];
+  const pace1 = preRise / pre, pace2 = postRise / (n - 1 - pre);
+  const cpiChg = cpi[n - 1] / cpi[0] - 1;
+  const f = [];
+  f.push('<strong>Tuna costs were already rising before the tariff, then sped up.</strong> The tuna cost index rose ' + pct(costChg) + ' over the year, against ' + pct(cpiChg) +
+    ' for food prices overall, so this is a tuna problem and not general inflation. It climbed ' + preRise.toFixed(1) + ' points in the ' + pre + ' months before the tariff (about ' +
+    pace1.toFixed(1) + ' a month) and ' + postRise.toFixed(1) + ' points in the ' + (n - 1 - pre) + ' months since (about ' + pace2.toFixed(1) + ' a month, roughly ' +
+    (pace2 / pace1).toFixed(1) + 'x faster). The tariff is a plausible part of that, but the index was already moving, so the pressure would not disappear if the tariff did.');
+
+  const p1 = cosPrice(months[1]), p2 = cosPrice(months[n - 1]);
+  const priceUp = p2 / p1 - 1, costUp = cost[n - 1] / cost[1] - 1;
+  f.push('<strong>Our price has not kept pace with costs.</strong> Our average shelf price (sales dollars per unit) went from $' + p1.toFixed(2) + ' in ' + mlong(months[1]).slice(0, 3) +
+    ' to $' + p2.toFixed(2) + ' in ' + mlong(months[n - 1]).slice(0, 3) + ' (' + pct(priceUp) + '), while the tuna cost index went from ' + cost[1].toFixed(1) + ' to ' + cost[n - 1].toFixed(1) +
+    ' over the same months (' + pct(costUp) + '). Tuna is only one part of our cost, so this is not a margin calculation, but it shows why the plan wants more price. Case 3 shows what happened to volume after the July tariff.');
+
+  const steps = pl.slice(1).map((v, i) => r1(v - pl[i]));
+  const allUp = steps.every(s => s > 0);
+  const stepOf = mo => steps[months.indexOf(mo) - 1];
+  const heavy = months.slice(1).filter(m => nPromo(m) >= 3).map(stepOf);
+  const light = months.slice(1).filter(m => nPromo(m) <= 1).map(stepOf);
+  const topR = rStats.slice().sort((a, b) => b.avg - a.avg).slice(0, 2);
+  f.push('<strong>Store brands gain share every month, with or without promotions.</strong> Store-brand share rose ' + r1(pl[n - 1] - pl[0]).toFixed(1) + ' points' +
+    (allUp ? ', up in every one of the ' + steps.length + ' months (' + Math.min(...steps).toFixed(1) + ' to ' + Math.max(...steps).toFixed(1) + ' points a month)' : '') + '. ' +
+    (heavy.length && light.length ? 'Months with 3 or more logged promotions averaged +' + mean(heavy).toFixed(2) + ' points against +' + mean(light).toFixed(2) + ' in months with 1 or none, so promotions do not explain the climb, though a log of only ' +
+      D.retail_promos_weekly.length + ' promotions makes that suggestive at best. ' : '') +
+    'Over the same months our own dollar share of category sales went from ' + cosShare(months[1]).toFixed(1) + '% in ' + mlong(months[1]).slice(0, 3) + ' to ' + cosShare(months[n - 1]).toFixed(1) + '% in ' +
+    mlong(months[n - 1]).slice(0, 3) + '. The deepest discounts come from ' + topR.map(s => short(s.rt) + ' (average ' + s.avg.toFixed(0) + '% off, up to ' + s.max + '%)').join(' and ') + '.');
+  document.getElementById('c4-findings').innerHTML = f.map(x => '<li>' + x + '</li>').join('');
+
+  // ---- Main chart ----
+  let sel = n - 1, chart = null;
+  function theme() {
+    const cs = getComputedStyle(document.documentElement);
+    const g = k => cs.getPropertyValue(k).trim();
+    return { text: g('--text'), muted: g('--muted'), line: g('--line'), accent: g('--accent') };
+  }
+  const marks = { id: 'c4marks',
+    beforeDatasetsDraw(c) {
+      const a = c.chartArea, x = c.scales.x, ctx = c.ctx;
+      const x0 = Math.max(a.left, x.getPixelForValue(tStart - 0.5)), x1 = Math.min(a.right, x.getPixelForValue(n - 1 + 0.5));
+      ctx.save(); ctx.fillStyle = 'rgba(224,138,44,0.14)'; ctx.fillRect(x0, a.top, x1 - x0, a.bottom - a.top); ctx.restore();
+    },
+    afterDatasetsDraw(c) {
+      const a = c.chartArea, x = c.scales.x, ctx = c.ctx, t = theme();
+      ctx.save(); ctx.font = '12px system-ui, sans-serif'; ctx.fillStyle = t.text; ctx.textAlign = 'left';
+      ctx.fillText('Tariff in effect', Math.max(a.left, x.getPixelForValue(tStart - 0.5)) + 6, a.bottom - 8);
+      const xs = x.getPixelForValue(sel);
+      ctx.strokeStyle = t.accent; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(xs, a.top); ctx.lineTo(xs, a.bottom); ctx.stroke();
+      ctx.restore();
+    }
+  };
+  function drawChart() {
+    const t = theme();
+    Chart.defaults.color = t.text; Chart.defaults.borderColor = t.line;
+    Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+    if (chart) chart.destroy();
+    chart = new Chart(document.getElementById('c4-chart'), { type: 'line', plugins: [marks],
+      data: { labels: months.map(mshort), datasets: [
+        { label: 'Tuna cost index (left axis)', data: cost, yAxisID: 'y', borderColor: t.accent, backgroundColor: t.accent,
+          borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 6, tension: 0.15 },
+        { label: 'Store-brand share, % (right axis)', data: pl, yAxisID: 'y2', borderColor: '#e08a2c', backgroundColor: '#e08a2c',
+          borderWidth: 2.5, borderDash: [6, 4], pointRadius: 4, pointHoverRadius: 6, tension: 0.15 } ] },
+      options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+        onClick: (e, els, c) => { const p = c.getElementsAtEventForMode(e, 'index', { intersect: false }, true); if (p.length) setMonth(p[0].index); },
+        scales: {
+          y: { position: 'left', suggestedMin: Math.floor(Math.min(...cost)) - 2, suggestedMax: Math.ceil(Math.max(...cost)) + 2, title: { display: true, text: 'Tuna cost index' } },
+          y2: { position: 'right', suggestedMin: Math.floor(Math.min(...pl)) - 1, suggestedMax: Math.ceil(Math.max(...pl)) + 1, grid: { drawOnChartArea: false },
+                title: { display: true, text: 'Store-brand share (%)' }, ticks: { callback: v => v + '%' } },
+          x: { ticks: { maxRotation: 0 } } },
+        plugins: { legend: { position: 'bottom' },
+          tooltip: { callbacks: { label: c => c.datasetIndex === 0 ? 'Tuna cost index: ' + c.parsed.y.toFixed(1) : 'Store-brand share: ' + c.parsed.y.toFixed(1) + '%',
+                                  footer: items => { const i = items[0].dataIndex; return 'Tariff: ' + tar[i].toFixed(1) + '%'; } } } } } });
+  }
+
+  // ---- Month drill-down ----
+  const chipBox = document.getElementById('c4-chips');
+  function buildChips() {
+    chipBox.innerHTML = '';
+    months.forEach((m, i) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip'; b.textContent = mshort(m);
+      b.setAttribute('aria-pressed', String(i === sel));
+      b.addEventListener('click', () => setMonth(i));
+      chipBox.appendChild(b);
+    });
+  }
+  function renderMonth() {
+    const mo = months[sel], rows = promoBy.get(mo) || [];
+    Array.from(chipBox.children).forEach((c, i) => c.setAttribute('aria-pressed', String(i === sel)));
+    document.getElementById('c4-title').textContent = 'Store-brand promotions, ' + mlong(mo);
+    document.getElementById('c4-stats').innerHTML =
+      '<span>Tuna cost index: <strong>' + cost[sel].toFixed(1) + '</strong></span>' +
+      '<span>Store-brand share: <strong>' + pl[sel].toFixed(1) + '%</strong></span>' +
+      '<span>Tariff: <strong>' + tar[sel].toFixed(1) + '%</strong></span>' +
+      '<span>Our shelf price: <strong>$' + cosPrice(mo).toFixed(2) + '</strong></span>' +
+      '<span>Promotions logged: <strong>' + rows.length + '</strong>' +
+        (rows.length ? ' (average ' + mean(rows.map(r => r.discount_pct)).toFixed(0) + '% off)' : '') + '</span>';
+    let h = '<table class="promo"><thead><tr><th>Retailer</th><th>Week of</th><th>Discount</th><th>Retailer average, all months</th></tr></thead><tbody>';
+    retailers.forEach(rt => {
+      const mine = rows.filter(r => r.retailer === rt).sort((a, b) => a.week_start < b.week_start ? -1 : 1);
+      if (!mine.length) {
+        h += '<tr><td>' + short(rt) + '</td><td colspan="2" class="none">No promotion logged</td><td>' + rAvg.get(rt).toFixed(0) + '% off</td></tr>';
+      } else {
+        mine.forEach(r => {
+          h += '<tr><td>' + short(rt) + '</td><td>' + dayOnly(r.week_start) + '</td><td><span class="dtrack"><span class="dbar" style="width:' +
+               Math.round(r.discount_pct / 30 * 100) + '%"></span></span>' + r.discount_pct + '% off</td><td>' + rAvg.get(rt).toFixed(0) + '% off</td></tr>';
+        });
+      }
+    });
+    document.getElementById('c4-table').innerHTML = h + '</tbody></table>';
+    document.getElementById('c4-note').textContent = rows.length
+      ? 'Bars are scaled to a 30% discount. Promotions are assigned to the month in which their week starts.'
+      : 'The promotion log is sparse, so "none logged" does not prove no promotion ran.';
+  }
+  function setMonth(i) {
+    sel = Math.max(0, Math.min(n - 1, i));
+    if (chart) chart.update('none');
+    renderMonth();
+  }
+
+  buildChips(); drawChart(); setMonth(n - 1);
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawChart);
+})();
+/* CASE4:JS:END */
 </script>
 </body>
 </html>
