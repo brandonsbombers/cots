@@ -268,15 +268,65 @@
 
   <!-- PLAN:START -->
   <section id="plan-vs-data">
+    <style>
+      #plan-vs-data h4, #finale h4 { font-size: .95rem; margin: 18px 0 6px; }
+      #finale h3 { font-size: 1.05rem; margin: 26px 0 6px; }
+      #plan-vs-data .scroll, #finale .scroll { overflow-x: auto; }
+      #plan-vs-data .mv { border: 1px solid var(--line); border-radius: 12px; margin-top: 12px; }
+      #plan-vs-data .mv-head { display: block; width: 100%; text-align: left; background: transparent; border: none; color: inherit;
+                               font: inherit; padding: 14px 16px; cursor: pointer; border-radius: 12px; }
+      #plan-vs-data .mv-head:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+      #plan-vs-data .mv-top { display: flex; align-items: center; gap: 12px; }
+      #plan-vs-data .mv-title { flex: 1; font-weight: 700; font-size: 1.02rem; }
+      #plan-vs-data .mv-plan { display: block; color: var(--muted); font-size: .88rem; margin: 6px 0 4px 40px; }
+      #plan-vs-data .mv-line { display: block; font-size: .92rem; margin: 4px 0 0 40px; }
+      #plan-vs-data .chev { color: var(--muted); transition: transform .15s; }
+      #plan-vs-data .mv.open .chev { transform: rotate(90deg); }
+      #plan-vs-data .mv-detail { padding: 0 16px 16px 56px; border-top: 1px solid var(--line); }
+      #plan-vs-data .mv-meta { font-size: .88rem; color: var(--muted); margin: 12px 0 0; }
+      #plan-vs-data .pill, #finale .pill, #finale .vchip { display: inline-block; padding: 2px 10px; border-radius: 999px;
+                               border: 2px solid currentColor; font-weight: 600; font-size: .82rem; white-space: nowrap; }
+      #plan-vs-data .act-keep, #finale .act-keep { color: var(--confirmed); }
+      #plan-vs-data .act-change, #finale .act-change { color: var(--mixed); }
+      #plan-vs-data .act-stop, #finale .act-stop { color: var(--busted); }
+      #finale .v-notyet { color: var(--notyet); }
+      #finale .v-confirmed { color: var(--confirmed); }
+      #finale .v-mixed { color: var(--mixed); }
+      #finale .v-busted { color: var(--busted); }
+      #plan-vs-data .brow { display: grid; grid-template-columns: 130px 1fr 120px; gap: 8px; align-items: center; font-size: .88rem; margin: 5px 0; }
+      #plan-vs-data .btrack { display: block; background: var(--line); border-radius: 3px; height: 10px; }
+      #plan-vs-data .bfill { display: block; height: 10px; border-radius: 3px; background: var(--accent); }
+      #plan-vs-data .brow.hl .bfill { background: #e08a2c; }
+      #plan-vs-data .brow.hl .bl { font-weight: 700; }
+      #plan-vs-data ul.evi, #finale ul.evi { padding-left: 20px; margin: 6px 0 0; }
+      #plan-vs-data ul.evi li, #finale ul.evi li { margin-bottom: 6px; }
+      #plan-vs-data .cant { font-size: .88rem; color: var(--muted); margin: 14px 0 0; }
+      #plan-vs-data table.mini, #finale table.mini { border-collapse: collapse; width: 100%; min-width: 520px; font-size: .88rem; }
+      #plan-vs-data table.mini th, #plan-vs-data table.mini td, #finale table.mini th, #finale table.mini td
+        { padding: 7px 8px; text-align: left; border-top: 1px solid var(--line); vertical-align: top; }
+      #plan-vs-data table.mini thead th, #finale table.mini thead th { border-top: none; color: var(--muted); font-weight: 600; font-size: .82rem; }
+      #plan-vs-data table.mini tr.us td { font-weight: 700; }
+      #finale .bottom { font-size: 1.02rem; margin: 8px 0 0; }
+      #finale ol.todo { padding-left: 22px; margin: 8px 0 0; }
+      #finale ol.todo li { margin-bottom: 8px; }
+      #finale .linkbtn { background: none; border: none; padding: 0; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
+      #finale .linkbtn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+      @media (max-width: 560px) {
+        #plan-vs-data .mv-detail { padding-left: 16px; }
+        #plan-vs-data .mv-plan, #plan-vs-data .mv-line { margin-left: 0; }
+        #plan-vs-data .brow { grid-template-columns: 100px 1fr 100px; }
+      }
+    </style>
     <h2>Plan vs data: What should change?</h2>
-    <p class="placeholder">Coming next.</p>
+    <p class="hint">For each of the plan's five moves: Keep, Change or Stop, one line of evidence and one recommended change. Click a move for the detail. "Suggested verdict" uses the same words as the buttons at the top.</p>
+    <div id="pvd-list"></div>
   </section>
   <!-- PLAN:END -->
 
   <!-- FINALE:START -->
   <section id="finale">
     <h2>Finale</h2>
-    <p class="placeholder">Coming next.</p>
+    <div id="finale-body"></div>
   </section>
   <!-- FINALE:END -->
 
@@ -1116,5 +1166,358 @@
 })();
 /* CASE4:JS:END */
 </script>
+<!-- PLAN:JS:START -->
+<script>
+(function () {
+  const D = window.DATA;
+  const COS = 'Chicken of the Sea';
+  const WM = 'Walmart (bettergoods/Great Value)';
+  const SOC = 'Social (Instagram, TikTok)';
+  const CHS = [SOC, 'Search', 'Amazon Ads', 'Connected TV', 'In-store promotion'];
+  const CH_SHORT = { [SOC]: 'Social' };
+  // Budget mix in the FY2027 plan PDF (percent of the $22.1M)
+  const PLAN_MIX = { [SOC]: 60, 'Search': 8, 'Amazon Ads': 7, 'Connected TV': 15, 'In-store promotion': 10 };
+  const MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  // ---- Helpers ----
+  const sum = a => a.reduce((x, y) => x + y, 0);
+  const mean = a => sum(a) / a.length;
+  const median = a => { const s = a.slice().sort((x, y) => x - y); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+  const r0 = x => Math.round(x);
+  const pct = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%';
+  const sg = v => { const r = Math.round(v * 100) / 100; return (r > 0 ? '+' : '') + (r === 0 ? '0.00' : r.toFixed(2)); };
+  const M = v => (v / 1e6).toFixed(2) + 'M';
+  const ord = n => n + ({ 1: 'st', 2: 'nd', 3: 'rd' }[n] || 'th');
+  const parse = s => new Date(s + 'T00:00:00Z');
+  const dayOnly = s => { const d = parse(s); return MN[d.getUTCMonth()] + ' ' + d.getUTCDate(); };
+  const monAbbr = mo => MN[+mo.split('-')[1] - 1];
+  const weekStartOf = ds => { const d = parse(ds); d.setUTCDate(d.getUTCDate() - d.getUTCDay()); return d.toISOString().slice(0, 10); };
+  const short = b => ({ 'Walmart (bettergoods/Great Value)': 'Walmart', 'Costco (Kirkland Signature)': 'Costco' }[b] || b);
+
+  // ======================================================================
+  // 1. Facts: every number below is recomputed from data.js
+  // ======================================================================
+  function computeFacts() {
+    const F = {};
+    const S = D.sales_weekly;
+    const weeks = Array.from(new Set(S.map(r => r.week_start))).sort();
+    const f8 = new Set(weeks.slice(0, 8)), l8 = new Set(weeks.slice(-8));
+
+    // Sales by brand: totals, and first 8 vs last 8 weeks
+    const B = new Map();
+    S.forEach(r => {
+      if (!B.has(r.brand)) B.set(r.brand, { brand: r.brand, group: r.group, d: 0, u: 0, f8u: 0, l8u: 0, f8d: 0, l8d: 0 });
+      const o = B.get(r.brand); o.d += r.dollars; o.u += r.units;
+      if (f8.has(r.week_start)) { o.f8u += r.units; o.f8d += r.dollars; }
+      if (l8.has(r.week_start)) { o.l8u += r.units; o.l8d += r.dollars; }
+    });
+    const all = Array.from(B.values());
+    const totD = sum(all.map(o => o.d));
+    all.forEach(o => { o.share = o.d / totD * 100; o.price = o.d / o.u; o.uChg = o.l8u / o.f8u - 1; });
+    F.B = B;
+    F.cosUnitsTrend = B.get(COS).uChg;
+    const plRows = all.filter(o => o.group === 'Private label');
+    F.plUnitsChg = sum(plRows.map(o => o.l8u)) / sum(plRows.map(o => o.f8u)) - 1;
+    const branded = all.filter(o => o.group !== 'Private label' && o.brand !== COS).map(o => o.uChg);
+    F.brandedMin = Math.min(...branded); F.brandedMax = Math.max(...branded);
+    // Premium = branded (not private label) with average price of $3.50 or more
+    const prem = all.filter(o => o.group !== 'Private label' && o.price >= 3.5).sort((a, b) => b.d - a.d);
+    F.premium = prem;
+    F.premShare = sum(prem.map(o => o.d)) / totD * 100;
+    F.premShareF = sum(prem.map(o => o.f8d)) / sum(all.map(o => o.f8d)) * 100;
+    F.premShareL = sum(prem.map(o => o.l8d)) / sum(all.map(o => o.l8d)) * 100;
+
+    // Conversation
+    const mt = new Map(), ms = new Map(), wAll = new Map(), wCos = new Map(); let allM = 0;
+    D.mentions_weekly.forEach(r => {
+      mt.set(r.brand, (mt.get(r.brand) || 0) + r.mentions); allM += r.mentions;
+      if (!ms.has(r.brand)) ms.set(r.brand, {});
+      const o = ms.get(r.brand); o[r.source] = (o[r.source] || 0) + r.mentions;
+      wAll.set(r.week_start, (wAll.get(r.week_start) || 0) + r.mentions);
+      if (r.brand === COS) wCos.set(r.week_start, (wCos.get(r.week_start) || 0) + r.mentions);
+    });
+    F.conv = b => mt.get(b) / allM * 100;
+    F.src = (b, s) => ms.get(b)[s] / sum(Object.values(ms.get(b))) * 100;
+    F.convLast8 = mean(weeks.slice(-8).map(w => wCos.get(w) / wAll.get(w) * 100));
+    F.cosSocialPerWeek = ms.get(COS)['Social'] / weeks.length;
+    F.salesShare = b => B.get(b).share;
+
+    // Sentiment: simple average of the last 3 months (same rule as Case 2)
+    const smonths = Array.from(new Set(D.sentiment_topic.map(r => r.month))).sort();
+    const last3 = smonths.slice(-3);
+    const sc = new Map(); D.sentiment_topic.forEach(r => sc.set(r.brand + '|' + r.topic + '|' + r.month, r.score));
+    F.A = (b, t) => Math.round(mean(last3.map(m => sc.get(b + '|' + t + '|' + m))) * 100) / 100;
+    F.SENT_BRANDS = [COS, 'StarKist', 'Bumble Bee', 'Wild Planet', 'Safe Catch', 'Fishwife', WM];
+    F.rank = (b, t) => 1 + F.SENT_BRANDS.filter(x => F.A(x, t) > F.A(b, t)).length;
+    F.top = t => F.SENT_BRANDS.slice().sort((a, b) => F.A(b, t) - F.A(a, t));
+    const cosSust = smonths.map(m => sc.get(COS + '|sustainability|' + m));
+    F.sustMin = Math.min(...cosSust); F.sustMax = Math.max(...cosSust);
+    F.sustTarget = F.A(COS, 'sustainability') + 0.2;
+    F.sustTargetRank = 1 + F.SENT_BRANDS.filter(x => x !== COS && F.A(x, 'sustainability') > F.sustTarget).length;
+    F.priceSent = m => sc.get(COS + '|price|' + m);
+
+    // Macro and our price by month
+    const mac = D.macro_monthly.slice().sort((a, b) => a.month < b.month ? -1 : 1);
+    const n = mac.length;
+    F.cost0 = mac[0].tuna_cost_index; F.costN = mac[n - 1].tuna_cost_index;
+    F.costChg = F.costN / F.cost0 - 1;
+    F.pl0 = mac[0].private_label_share_pct; F.plN = mac[n - 1].private_label_share_pct;
+    F.plAlwaysUp = mac.slice(1).every((r, i) => r.private_label_share_pct > mac[i].private_label_share_pct);
+    const sm = new Map(); // month -> {d, u}
+    S.filter(r => r.brand === COS).forEach(r => { const mo = r.week_start.slice(0, 7); const o = sm.get(mo) || { d: 0, u: 0 }; o.d += r.dollars; o.u += r.units; sm.set(mo, o); });
+    const pm = mac.map(r => r.month);
+    F.pFrom = sm.get(pm[1]).d / sm.get(pm[1]).u; F.pTo = sm.get(pm[n - 1]).d / sm.get(pm[n - 1]).u;
+    F.priceUp = F.pTo / F.pFrom - 1;
+    F.costUpSame = mac[n - 1].tuna_cost_index / mac[1].tuna_cost_index - 1;
+    F.monthFrom = monAbbr(pm[1]); F.monthTo = monAbbr(pm[n - 1]);
+
+    // The tariff windows (same definition as Case 3)
+    const cos = S.filter(r => r.brand === COS).sort((a, b) => a.week_start < b.week_start ? -1 : 1);
+    const cw = cos.map(r => r.week_start);
+    const tEv = D.events.find(e => e.is_real === 1 && /tariff/i.test(e.headline)) || { date: '2026-07-24' };
+    const ti = cw.indexOf(weekStartOf(tEv.date));
+    const bI = [], aI = [];
+    for (let i = ti - 7; i <= ti; i++) bI.push(i);
+    for (let i = ti + 1; i <= ti + 8; i++) aI.push(i);
+    const byBW = new Map();
+    S.forEach(r => { if (!byBW.has(r.brand)) byBW.set(r.brand, new Map()); byBW.get(r.brand).set(r.week_start, r); });
+    const brandChg = b => { const m = byBW.get(b);
+      return { units: sum(aI.map(i => m.get(cw[i]).units)) / sum(bI.map(i => m.get(cw[i]).units)) - 1,
+               price: mean(aI.map(i => m.get(cw[i]).avg_price)) / mean(bI.map(i => m.get(cw[i]).avg_price)) - 1 }; };
+    F.us = brandChg(COS); F.sk = brandChg('StarKist'); F.bb = brandChg('Bumble Bee');
+    const smo = Array.from(sm.keys()).sort();
+    const tMonth = tEv.date.slice(0, 7), iT = smo.indexOf(tMonth);
+    F.psFrom = F.priceSent(smo[iT - 2]); F.psTo = F.priceSent(smo[smo.length - 1]);
+    F.psFromMon = monAbbr(smo[iT - 2]); F.psToMon = monAbbr(smo[smo.length - 1]);
+    const uB = sum(bI.map(i => cos[i].units));
+    F.preAvgUnits = uB / 8;
+
+    // Our media
+    const mw = new Map();
+    D.media_spend_weekly.filter(r => r.brand === COS).forEach(r => { if (!mw.has(r.week_start)) mw.set(r.week_start, {}); const o = mw.get(r.week_start); o[r.channel] = (o[r.channel] || 0) + r.spend_usd; });
+    const chTot = {}; CHS.forEach(c => chTot[c] = sum(cw.map(w => (mw.get(w) || {})[c] || 0)));
+    const mTot = sum(Object.values(chTot));
+    F.mix = {}; CHS.forEach(c => F.mix[c] = chTot[c] / mTot * 100);
+    F.mediaTotal = mTot;
+    const chWin = (idx, c) => sum(idx.map(i => (mw.get(cw[i]) || {})[c] || 0));
+    F.socChg = chWin(aI, SOC) / chWin(bI, SOC) - 1;
+    const soc = cw.map(w => (mw.get(w) || {})[SOC] || 0), socMed = median(soc);
+    const surge = cw.map((w, i) => i).filter(i => i > ti && soc[i] > 2 * socMed);
+    F.surgeN = surge.length;
+    if (surge.length) {
+      F.surgeMult = mean(surge.map(i => soc[i])) / socMed;
+      F.surgeUnits = mean(surge.map(i => cos[i].units));
+      F.surgeVs = F.surgeUnits / F.preAvgUnits - 1;
+      F.surgeFrom = dayOnly(cw[surge[0]]); F.surgeTo = dayOnly(cw[surge[surge.length - 1]]);
+    }
+    // Lift in weeks a channel ran vs the neighboring weeks it did not (rough, not a controlled test)
+    const lift = (ch, win) => {
+      const flag = cw.map(w => ((mw.get(w) || {})[ch] || 0) > 0), lifts = [];
+      cos.forEach((r, i) => { if (!flag[i]) return; const nb = [];
+        for (let j = Math.max(0, i - win); j <= Math.min(cw.length - 1, i + win); j++) if (j !== i && !flag[j]) nb.push(cos[j].units);
+        if (nb.length) lifts.push(r.units / mean(nb) - 1); });
+      return { mean: mean(lifts), up: lifts.filter(x => x > 0).length, n: lifts.length };
+    };
+    F.promoLift = lift('In-store promotion', 3);
+    F.ctvLift = lift('Connected TV', 3);
+
+    // Amazon ratings
+    const rt = b => mean(D.amazon_reviews_weekly.filter(r => r.brand === b).map(r => r.avg_rating));
+    F.rating = { cos: rt(COS), sk: rt('StarKist'), wm: rt(WM) };
+    return F;
+  }
+
+  // ======================================================================
+  // 2. The five moves: Keep / Change / Stop, one evidence line, one change
+  // ======================================================================
+  function buildMoves(F) {
+    const A = F.A, top2s = F.top('sustainability').slice(0, 2), topMerc = F.top('mercury')[0];
+    const ko = F.B.get('King Oscar');
+    const bars = (rows, max) => rows.map(r => '<div class="brow' + (r.hl ? ' hl' : '') + '"><span class="bl">' + r.label + '</span><span class="btrack"><span class="bfill" style="width:' +
+      Math.max(0, Math.min(100, r.value / max * 100)).toFixed(0) + '%"></span></span><span class="bv">' + r.text + '</span></div>').join('');
+    const sec = (t, h) => '<h4>' + t + '</h4>' + h;
+    const ul = items => '<ul class="evi">' + items.filter(Boolean).map(x => '<li>' + x + '</li>').join('') + '</ul>';
+    const cant = t => '<p class="cant"><strong>What this data cannot tell us:</strong> ' + t + '</p>';
+    const liftWord = x => Math.abs(x) < 0.02 ? 'no visible lift' : (x > 0 ? 'a lift' : 'a drop');
+
+    const moves = [];
+
+    moves.push({ id: 'social', title: 'Go social-first', plan: 'Move media to social: 19% to 60%', action: 'Change', verdict: 'Busted', conf: 'Medium',
+      evidence: 'Only ' + r0(F.src(COS, 'Social')) + '% of our conversation is on social (Reddit ' + r0(F.src(COS, 'Reddit')) + '%), and ' + F.surgeN +
+        ' weeks of social spend at ' + F.surgeMult.toFixed(1) + 'x normal came with units at ' + pct(F.surgeVs) + ' vs the pre-tariff average.',
+      change: 'Take social from ' + r0(F.mix[SOC]) + '% toward 25 to 30% of media, run it as a measured test, and fund it from Connected TV rather than Amazon or in-store.',
+      detail: function () {
+        return sec('Where our conversation happens', bars(['Amazon', 'Reddit', 'Social', 'YouTube'].map(s => ({ label: s, value: F.src(COS, s), text: r0(F.src(COS, s)) + '%', hl: s === 'Social' })), 50)) +
+          sec('Share of our media budget: FY26 actual and the FY27 plan', bars(CHS.map(c => ({ label: CH_SHORT[c] || c, value: PLAN_MIX[c], text: r0(F.mix[c]) + '% to ' + PLAN_MIX[c] + '%', hl: c === SOC })), 60)) +
+          sec('Evidence', ul([
+            'Social is ' + r0(F.src(COS, 'Social')) + '% of our mentions. StarKist (' + r0(F.src('StarKist', 'Social')) + '%) and Wild Planet (' + r0(F.src('Wild Planet', 'Social')) + '%) look the same. Fishwife\'s ' + r0(F.src('Fishwife', 'Social')) + '% is the outlier, and it is Fishwife\'s pattern, not ours.',
+            'Buzz has not turned into sales elsewhere in the category: Fishwife has ' + F.conv('Fishwife').toFixed(1) + '% of conversation and ' + F.salesShare('Fishwife').toFixed(1) + '% of sales.',
+            'A rough natural test: in the 8 weeks after the tariff, social spend moved ' + pct(F.socChg) + '. From ' + F.surgeFrom + ' to ' + F.surgeTo + ' it ran at about ' + F.surgeMult.toFixed(1) +
+              'x its usual level, and units over those ' + F.surgeN + ' weeks averaged ' + M(F.surgeUnits) + ', ' + pct(F.surgeVs) + ' vs the pre-tariff average of ' + M(F.preAvgUnits) + '.',
+            'Funding source: Connected TV weeks ran ' + pct(F.ctvLift.mean) + ' vs neighboring weeks without it (' + F.ctvLift.n + ' weeks), which is ' + liftWord(F.ctvLift.mean) + '. The plan\'s Connected TV cut looks like the least risky place to find money.'])) +
+          cant('Where people talk is not where they are persuaded. The files have mentions, not engagement or conversion, so the plan\'s +50% social engagement KPI has no baseline here. The social surge also overlapped with an Amazon Ads cut and the tariff, so it is a rough test. The 25 to 30% range is a judgment call anchored to the share of our conversation on social.');
+      } });
+
+    moves.push({ id: 'sustain', title: 'Lead with sustainability', plan: '"Responsibly Sourced" as the hero message', action: 'Change', verdict: 'Busted', conf: 'High',
+      evidence: 'We score ' + sg(A(COS, 'sustainability')) + ', ' + ord(F.rank(COS, 'sustainability')) + ' of 7 brands (' + short(top2s[0]) + ' ' + sg(A(top2s[0], 'sustainability')) + ', ' +
+        short(top2s[1]) + ' ' + sg(A(top2s[1], 'sustainability')) + '), and our monthly score never left ' + sg(F.sustMin) + ' to ' + sg(F.sustMax) + ' all year.',
+      change: 'Lead with taste (' + sg(A(COS, 'taste')) + ') and texture (' + sg(A(COS, 'texture')) + '), use sustainability only as a proof point we can verify, and close the mercury gap (' + sg(A(COS, 'mercury')) + ' vs ' + sg(A(topMerc, 'mercury')) + ') first.',
+      detail: function () {
+        const rows = F.top('sustainability').map(b => ({ label: short(b), value: Math.max(A(b, 'sustainability'), 0), text: sg(A(b, 'sustainability')), hl: b === COS }));
+        return sec('Sustainability sentiment, average of the last 3 months', bars(rows, 0.7)) +
+          sec('Evidence', ul([
+            'The plan\'s KPI is +0.2 sustainability sentiment. From ' + sg(A(COS, 'sustainability')) + ' that means about ' + sg(F.sustTarget) + ', which would rank ' + ord(F.sustTargetRank) + ' of 7. Our best month this year was ' + sg(F.sustMax) + ', so the target is well beyond anything in the data.',
+            'Mercury is the other topic the small brands own: ' + short(topMerc) + ' ' + sg(A(topMerc, 'mercury')) + ' vs our ' + sg(A(COS, 'mercury')) + '. A sourcing campaign invites that comparison.',
+            'Our strengths are product topics: taste ' + sg(A(COS, 'taste')) + ' (' + ord(F.rank(COS, 'taste')) + ' of 7) and texture ' + sg(A(COS, 'texture')) + ' (' + ord(F.rank(COS, 'texture')) + ' of 7).'])) +
+          cant('Sentiment is not purchase intent. Nothing here shows whether sustainability, taste or anything else drives what people buy, and individual months rest on only 8 to 60 comments.');
+      } });
+
+    moves.push({ id: 'price', title: 'Take price', plan: '+8% list price on core tuna in Q1', action: 'Change', verdict: 'Mixed', conf: 'Low to medium',
+      evidence: 'Around a ' + pct(F.us.price) + ' shelf-price rise units ran ' + pct(F.us.units) + ' and price sentiment fell from ' + sg(F.psFrom) + ' to ' + sg(F.psTo) + ', yet tuna costs are up ' + pct(F.costChg) + '.',
+      change: 'Stage the increase instead of +8% in Q1: start near the ~' + r0(F.us.price * 100) + '% we have actually seen, read units and price sentiment for 8 weeks, and use value packs to hold entry prices.',
+      detail: function () {
+        return sec('Evidence', ul([
+          'The plan assumes "our shoppers are loyal and will absorb it." In the 8 weeks after the July tariff, average shelf price rose ' + pct(F.us.price) + ' and weekly units ran ' + pct(F.us.units) + ' vs the 8 weeks before.',
+          'Price sentiment in comments went from ' + sg(F.psFrom) + ' (' + F.psFromMon + ') to ' + sg(F.psTo) + ' (' + F.psToMon + '). Over the last 3 months we score ' + sg(A(COS, 'price')) + ' on price vs Walmart ' + sg(A(WM, 'price')) + ' and Wild Planet ' + sg(A('Wild Planet', 'price')) + ', so there is no goodwill cushion.',
+          'Not all of the drop is price: StarKist (units ' + pct(F.sk.units) + ', price ' + pct(F.sk.price) + ') and Bumble Bee (units ' + pct(F.bb.units) + ', price ' + pct(F.bb.price) + ') raised price more and lost less.',
+          'Store brands are taking share: ' + F.pl0.toFixed(1) + '% to ' + F.plN.toFixed(1) + '% of the category over the year.',
+          'The pressure is real: our shelf price rose ' + pct(F.priceUp) + ' from ' + F.monthFrom + ' to ' + F.monthTo + ' while the tuna cost index rose ' + pct(F.costUpSame) + ' over the same months. Some price action is justified, which is why this is Change and not Stop.',
+          '+8% is roughly ' + (8 / (F.us.price * 100)).toFixed(0) + 'x the shelf-price move we have data on. List price and shelf price are not the same thing, so treat that as a sense of scale.'])) +
+          cant('How much of the unit drop is price. The tariff, our own media mix and the store-brand trend all moved in the same weeks, and we have one year of data, so seasonality is not controlled. That is why the verdict is Mixed: the cost case is confirmed and the "shoppers will absorb it" assumption is not supported.');
+      } });
+
+    moves.push({ id: 'premium', title: 'Go premium', plan: 'Launch "Chicken of the Sea Reserve" against Fishwife', action: 'Stop', verdict: 'Busted', conf: 'Medium',
+      evidence: 'Premium brands ($3.50+ average price) hold ' + F.premShare.toFixed(1) + '% of dollars and slipped from ' + F.premShareF.toFixed(1) + '% to ' + F.premShareL.toFixed(1) + '% over the year; Fishwife has ' + F.conv('Fishwife').toFixed(1) + '% of conversation but ' + F.salesShare('Fishwife').toFixed(1) + '% of sales.',
+      change: 'Pause the Reserve launch and first read what our own premium line, King Oscar (' + ko.share.toFixed(1) + '% of sales at $' + ko.price.toFixed(2) + ', units ' + pct(ko.uChg) + '), says about premium demand.',
+      detail: function () {
+        let t = '<div class="scroll"><table class="mini"><thead><tr><th>Premium brand</th><th>Share of dollars</th><th>Avg price</th><th>Units, last 8 vs first 8 weeks</th></tr></thead><tbody>';
+        F.premium.forEach(o => { t += '<tr' + (o.group === 'Own' ? ' class="us"' : '') + '><td>' + o.brand + (o.group === 'Own' ? ' (ours)' : '') + '</td><td>' + o.share.toFixed(1) + '%</td><td>$' + o.price.toFixed(2) + '</td><td>' + pct(o.uChg) + '</td></tr>'; });
+        t += '</tbody></table></div>';
+        return sec('The premium segment in the data', t) +
+          sec('Evidence', ul([
+            'Together these brands hold ' + F.premShare.toFixed(1) + '% of dollars, and their share went from ' + F.premShareF.toFixed(1) + '% (first 8 weeks) to ' + F.premShareL.toFixed(1) + '% (last 8 weeks). ' + (F.premium.every(o => o.uChg < 0) ? 'Every premium brand in the table lost units.' : 'Not every premium brand lost units.'),
+            'We already own a premium line: King Oscar sells at $' + ko.price.toFixed(2) + ' and has ' + ko.share.toFixed(1) + '% of sales, about the same as Wild Planet.',
+            'Fishwife is the model the plan wants to chase, and its price sentiment is ' + sg(A('Fishwife', 'price')) + ', the worst in the grid, while its packaging scores ' + sg(A('Fishwife', 'packaging')) + ' vs our ' + sg(A(COS, 'packaging')) + '. Its edge looks like packaging and buzz, not scale.',
+            'Private label ' + (F.brandedMax < 0 && F.plUnitsChg > 0 ? 'is the only group growing: units ' : 'units ran ') + pct(F.plUnitsChg) + ' (last 8 vs first 8 weeks) while branded rivals ran ' + pct(F.brandedMin) + ' to ' + pct(F.brandedMax) + ' and we ran ' + pct(F.cosUnitsTrend) + '.'])) +
+          cant('Nothing in the files measures demand for Reserve itself, and a small segment can still grow later. The point is that the data shows a small, flat, price-sensitive segment where we already have a product, so it is a poor first use of limited budget.');
+      } });
+
+    moves.push({ id: 'defend', title: 'Defend the core', plan: 'Value packs and a loyalty program against store brands', action: 'Keep', verdict: 'Confirmed', conf: 'Medium to high',
+      evidence: 'Store-brand share rose from ' + F.pl0.toFixed(1) + '% to ' + F.plN.toFixed(1) + '% and private label is the only group growing (units ' + pct(F.plUnitsChg) + '), yet the plan cuts in-store promotion from ' + r0(F.mix['In-store promotion']) + '% to ' + PLAN_MIX['In-store promotion'] + '% of budget.',
+      change: 'Keep the move and fund it: hold in-store promotion (' + r0(F.mix['In-store promotion']) + '%) and Amazon Ads (' + r0(F.mix['Amazon Ads']) + '%) near today\'s levels instead of cutting them to ' + PLAN_MIX['In-store promotion'] + '% and ' + PLAN_MIX['Amazon Ads'] + '%.',
+      detail: function () {
+        const row = (c, text, read) => '<tr><td>' + (CH_SHORT[c] || c) + '</td><td>' + r0(F.mix[c]) + '%</td><td>' + PLAN_MIX[c] + '%</td><td>' + text + '</td><td>' + read + '</td></tr>';
+        let t = '<div class="scroll"><table class="mini"><thead><tr><th>Channel</th><th>FY26</th><th>Plan</th><th>What the data shows</th><th>Read</th></tr></thead><tbody>' +
+          row(SOC, 'Only ' + r0(F.src(COS, 'Social')) + '% of our conversation is on social', 'Cut back the increase') +
+          row('Search', 'Not tested in this review', 'No view') +
+          row('Amazon Ads', 'Amazon is ' + r0(F.src(COS, 'Amazon')) + '% of our conversation, and our rating (' + F.rating.cos.toFixed(2) + ') is no better than StarKist (' + F.rating.sk.toFixed(2) + ') or Walmart (' + F.rating.wm.toFixed(2) + '), so reviews do not set us apart', 'Cut not supported') +
+          row('Connected TV', 'Weeks with it ran ' + pct(F.ctvLift.mean) + ' vs neighboring weeks (' + F.ctvLift.n + ' weeks): ' + liftWord(F.ctvLift.mean), 'Cut looks safest') +
+          row('In-store promotion', 'Promotion weeks ran ' + pct(F.promoLift.mean) + ' vs neighboring weeks, up in ' + F.promoLift.up + ' of ' + F.promoLift.n, 'Cut not supported') +
+          '</tbody></table></div>';
+        return sec('The plan\'s budget moves against the data', t) +
+          sec('Evidence', ul([
+            'Store-brand share ' + (F.plAlwaysUp ? 'rose in every month of the year, ' : 'rose over the year, ') + F.pl0.toFixed(1) + '% to ' + F.plN.toFixed(1) + '% (Case 4). Private label units are ' + pct(F.plUnitsChg) + ' while ours are ' + pct(F.cosUnitsTrend) + ' (last 8 vs first 8 weeks).',
+            'We have no value halo: price sentiment is ' + sg(A(COS, 'price')) + ' vs Walmart ' + sg(A(WM, 'price')) + ', which supports the plan\'s value packs.',
+            'The plan\'s reason for cutting in-store, that it is "less needed after the price increase", runs against the store-brand trend, since the shoppers we are defending are the ones comparing price at the shelf.'])) +
+          cant('Nothing in the files covers the loyalty program, so only the value-pack half of this move can be checked. The promotion and Connected TV reads compare each weekly figure with its neighbors, which is rough and ignores everything else that changed.');
+      } });
+
+    return moves;
+  }
+
+  // ======================================================================
+  // 3. Render: Plan vs data
+  // ======================================================================
+  const F = computeFacts();
+  const moves = buildMoves(F);
+  const list = document.getElementById('pvd-list');
+  const PILL = { Keep: 'act-keep', Change: 'act-change', Stop: 'act-stop' };
+
+  moves.forEach((m, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'mv';
+    wrap.innerHTML =
+      '<button type="button" class="mv-head" aria-expanded="false" aria-controls="mv-d-' + m.id + '">' +
+        '<span class="mv-top"><span class="move-num">' + (i + 1) + '</span><span class="mv-title">' + m.title + '</span>' +
+        '<span class="pill ' + PILL[m.action] + '">' + m.action + '</span><span class="chev" aria-hidden="true">&#9656;</span></span>' +
+        '<span class="mv-plan">Plan: ' + m.plan + '</span>' +
+        '<span class="mv-line"><strong>Evidence:</strong> ' + m.evidence + '</span>' +
+        '<span class="mv-line"><strong>Recommended change:</strong> ' + m.change + '</span>' +
+      '</button>' +
+      '<div class="mv-detail" id="mv-d-' + m.id + '" hidden>' +
+        '<p class="mv-meta">Suggested verdict for the button at the top: <strong>' + m.verdict + '</strong>. Confidence: ' + m.conf + '.</p>' +
+        m.detail() + '</div>';
+    const btn = wrap.querySelector('.mv-head'), det = wrap.querySelector('.mv-detail');
+    btn.addEventListener('click', () => {
+      const open = btn.getAttribute('aria-expanded') === 'true';
+      btn.setAttribute('aria-expanded', String(!open));
+      det.hidden = open;
+      wrap.classList.toggle('open', !open);
+    });
+    list.appendChild(wrap);
+  });
+
+  // ======================================================================
+  // 4. Render: Finale
+  // ======================================================================
+  const finale = document.getElementById('finale-body');
+  const VCLS = { 'Not yet': 'v-notyet', Confirmed: 'v-confirmed', Mixed: 'v-mixed', Busted: 'v-busted' };
+  const chip = v => '<span class="vchip ' + (VCLS[v] || 'v-notyet') + '">' + v + '</span>';
+  const nBusted = moves.filter(m => m.verdict === 'Busted').length, nMixed = moves.filter(m => m.verdict === 'Mixed').length, nConf = moves.filter(m => m.verdict === 'Confirmed').length;
+
+  function userVerdict(id) {
+    try { return (typeof verdicts !== 'undefined' && verdicts[id]) || 'Not yet'; } catch (e) { return 'Not yet'; }
+  }
+  function renderFinale() {
+    const top1 = F.top('sustainability')[0];
+    let h = '';
+    h += '<p class="bottom"><strong>The plan reads the situation right, but most of its moves are not supported by the data.</strong> We lead the shelf (' + F.salesShare(COS).toFixed(1) + '% of sales) but not the conversation (' +
+      F.conv(COS).toFixed(1) + '%), tuna costs are up ' + pct(F.costChg) + ' and store brands gained ' + (F.plN - F.pl0).toFixed(1) + ' points. The response puts ' + PLAN_MIX[SOC] + '% of media where only ' + r0(F.src(COS, 'Social')) +
+      '% of our conversation lives, leads with a message we rank ' + ord(F.rank(COS, 'sustainability')) + ' of 7 on, assumes shoppers will absorb +8% after a ' + pct(F.us.price) + ' move was followed by ' + pct(F.us.units) +
+      ' units, and launches a premium line into a segment holding ' + F.premShare.toFixed(1) + '% of dollars, while cutting the in-store and Amazon support that defend the core. ' +
+      'Of the five moves, ' + nBusted + ' look busted, ' + nMixed + ' ' + (nMixed === 1 ? 'is' : 'are') + ' mixed and ' + nConf + ' ' + (nConf === 1 ? 'is' : 'are') + ' confirmed (' + moves.filter(m => m.verdict === 'Confirmed').map(m => m.title).join(', ') + '), and the confirmed one is under-funded.</p>';
+
+    h += '<h3>Scorecard</h3><div class="scroll"><table class="mini score"><thead><tr><th>Move</th><th>Your verdict</th><th>Data suggests</th><th>Keep, Change or Stop</th></tr></thead><tbody>';
+    moves.forEach((m, i) => { h += '<tr><td>' + (i + 1) + '. ' + m.title + '</td><td>' + chip(userVerdict(m.id)) + '</td><td>' + chip(m.verdict) + '</td><td><span class="pill ' + PILL[m.action] + '">' + m.action + '</span></td></tr>'; });
+    h += '</tbody></table></div><p class="hint"><button type="button" class="linkbtn" id="fin-apply">Set the verdict buttons at the top to what the data suggests</button> (you can still change each one afterward).</p>';
+
+    h += '<h3>The plan\'s KPIs against the data</h3><div class="scroll"><table class="mini"><thead><tr><th>KPI</th><th>Plan target</th><th>Where the data puts us</th><th>Read</th></tr></thead><tbody>' +
+      '<tr><td>Share of conversation</td><td>20%</td><td>' + F.conv(COS).toFixed(1) + '% over the year, ' + F.convLast8.toFixed(1) + '% in the latest 8 weeks</td><td>A stretch: 20% would put us above Fishwife (' + F.conv('Fishwife').toFixed(1) + '%), the brand with the most buzz</td></tr>' +
+      '<tr><td>Unit growth</td><td>+3%</td><td>Latest 8 weeks are ' + pct(F.cosUnitsTrend) + ' vs the first 8 weeks (no seasonal adjustment)</td><td>Needs a turnaround before growth</td></tr>' +
+      '<tr><td>Price realization</td><td>+8%</td><td>Shelf price ' + pct(F.priceUp) + ' (' + F.monthFrom + ' to ' + F.monthTo + '), ' + pct(F.us.price) + ' across the tariff windows</td><td>Untested at this size</td></tr>' +
+      '<tr><td>Sustainability sentiment</td><td>+0.2</td><td>Now ' + sg(F.A(COS, 'sustainability')) + ', best month ' + sg(F.sustMax) + '; the target is about ' + sg(F.sustTarget) + ', ' + ord(F.sustTargetRank) + ' of 7</td><td>Beyond anything in this data</td></tr>' +
+      '<tr><td>Social engagement</td><td>+50%</td><td>No engagement metric in the files; social mentions run about ' + r0(F.cosSocialPerWeek) + ' a week</td><td>Needs a baseline first</td></tr>' +
+      '</tbody></table></div><p class="hint">The 25 to 34 recruitment objective cannot be tested here because the files have no age data.</p>';
+
+    h += '<h3>What to do first</h3><ol class="todo">' +
+      '<li><strong>Rebalance the budget before it goes to the VP.</strong> Hold in-store promotion and Amazon Ads near today\'s ' + r0(F.mix['In-store promotion']) + '% and ' + r0(F.mix['Amazon Ads']) + '%, raise social to roughly 25 to 30%, and take the difference from Connected TV.</li>' +
+      '<li><strong>Replace the blanket +8% with a staged price test</strong> paired with value packs, and read units and price sentiment weekly for 8 weeks before the next step.</li>' +
+      '<li><strong>Reposition on taste and texture, and pause Reserve.</strong> Close the mercury gap and learn from King Oscar first.</li>' +
+      '<li><strong>Set baselines now</strong> for social engagement and conversation share by channel, so the KPIs can actually be tracked.</li></ol>';
+
+    h += '<h3>What this data cannot tell us</h3><ul class="evi">' +
+      '<li>It covers one year, so seasonality is not controlled and part of the unit decline could be seasonal.</li>' +
+      '<li>The tariff, our media-mix changes and the store-brand trend happened together, so their effects cannot be separated.</li>' +
+      '<li>Sentiment is not purchase intent, and individual months rest on only 8 to 60 comments.</li>' +
+      '<li>There is no data on the loyalty program, the Reserve product, shopper age or social engagement, and the promotion log has only 25 rows.</li>' +
+      '<li>Everything here is a fictional teaching case, so treat the conclusions as an exercise in method.</li></ul>';
+    finale.innerHTML = h;
+
+    const apply = document.getElementById('fin-apply');
+    if (apply) apply.addEventListener('click', () => {
+      try {
+        moves.forEach(m => { verdicts[m.id] = m.verdict; });
+        saveVerdicts(verdicts); renderMoves();
+      } catch (e) { /* top buttons not available */ }
+      renderFinale();
+    });
+  }
+  renderFinale();
+  // Keep the scorecard in step when a verdict button at the top is clicked
+  const topList = document.getElementById('moves');
+  if (topList) topList.addEventListener('click', () => renderFinale());
+})();
+</script>
+<!-- PLAN:JS:END -->
 </body>
 </html>
