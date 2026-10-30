@@ -161,8 +161,60 @@
 
   <!-- CASE3:START -->
   <section id="case3">
+    <style>
+      #case3 h3 { font-size: 1.05rem; margin: 26px 0 6px; }
+      #case3 .chart-box { position: relative; width: 100%; height: 380px; }
+      #case3 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin: 14px 0 4px; }
+      #case3 .tile { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+      #case3 .tile .lab { font-size: .82rem; color: var(--muted); margin: 0; }
+      #case3 .tile .val { font-size: 1.7rem; font-weight: 700; margin: 2px 0; }
+      #case3 .tile .sub { font-size: .85rem; color: var(--muted); margin: 0; }
+      #case3 ol.findings { padding-left: 22px; margin: 8px 0 0; }
+      #case3 ol.findings li { margin-bottom: 10px; }
+      #case3 table { border-collapse: collapse; width: 100%; max-width: 560px; font-size: .9rem; margin-top: 8px; }
+      #case3 th, #case3 td { padding: 6px 8px; text-align: right; border-top: 1px solid var(--line); }
+      #case3 th:first-child, #case3 td:first-child { text-align: left; }
+      #case3 thead th { border-top: none; }
+      #case3 tr.us td, #case3 tr.us th { font-weight: 700; }
+      #case3 .wk-controls { display: flex; align-items: center; gap: 10px; margin: 10px 0 4px; }
+      #case3 .wk-controls input[type=range] { flex: 1; min-width: 0; }
+      #case3 .wk-controls button { border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 8px;
+                                   font: inherit; font-size: 1.1rem; padding: 2px 12px; cursor: pointer; }
+      #case3 .wk-controls button:focus-visible, #case3 .wk-controls input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+      #case3 .wk-title { font-weight: 600; margin: 8px 0 0; }
+      #case3 .wk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 12px; }
+      #case3 .wk-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+      #case3 .wk-card h4 { margin: 0 0 4px; font-size: .85rem; color: var(--muted); font-weight: 600; }
+      #case3 .wk-card .big { font-size: 1.5rem; font-weight: 700; }
+      #case3 .wk-card p { margin: 4px 0 0; font-size: .86rem; color: var(--muted); }
+      #case3 .wk-card ul { margin: 4px 0 0; padding-left: 18px; font-size: .88rem; }
+      #case3 .mrow { display: grid; grid-template-columns: 78px 1fr 52px; align-items: center; gap: 8px; font-size: .82rem; margin-top: 5px; }
+      #case3 .mrow .val { text-align: right; }
+      #case3 .track { background: var(--line); border-radius: 3px; height: 9px; display: block; }
+      #case3 .bar { background: var(--accent); border-radius: 3px; height: 9px; display: block; }
+    </style>
     <h2>Case 3: Did the July tariff hurt us?</h2>
-    <p class="placeholder">Coming next.</p>
+    <p class="hint" id="c3-hint"></p>
+
+    <div class="tiles" id="c3-tiles"></div>
+
+    <h3>Weekly units and monthly price sentiment</h3>
+    <div class="chart-box"><canvas id="c3-chart" role="img" aria-label="Line chart of Chicken of the Sea weekly units and monthly price sentiment with the July 24 tariff marked"></canvas></div>
+    <p class="hint">The units axis starts at 4 million, not zero. Click the chart, or use the slider in the drill-down below, to pick a week.</p>
+
+    <h3>Findings</h3>
+    <ol class="findings" id="c3-findings"></ol>
+    <div id="c3-compare"></div>
+
+    <h3>Drill-down: one week</h3>
+    <div class="wk-controls">
+      <button type="button" id="c3-prev" aria-label="Previous week">&#8249;</button>
+      <input type="range" id="c3-slider" min="0" value="0" aria-label="Select a week">
+      <button type="button" id="c3-next" aria-label="Next week">&#8250;</button>
+    </div>
+    <p class="wk-title" id="c3-wk-title"></p>
+    <p class="hint" id="c3-wk-phase"></p>
+    <div class="wk-grid" id="c3-wk-grid"></div>
   </section>
   <!-- CASE3:END -->
 
@@ -598,6 +650,248 @@
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawDrill);
 })();
 /* CASE2:JS:END */
+/* CASE3:JS:START */
+(function () {
+  const D = window.DATA;
+  const COS = 'Chicken of the Sea';
+  const SOC = 'Social (Instagram, TikTok)';
+  const CH = ['Amazon Ads', 'Connected TV', 'In-store promotion', 'Search', SOC];
+  const CH_SHORT = { 'Social (Instagram, TikTok)': 'Social' };
+  const MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const SHORT = { 'Walmart (bettergoods/Great Value)': 'Walmart', 'Target (Good & Gather)': 'Target', 'Costco (Kirkland Signature)': 'Costco' };
+  const short = b => SHORT[b] || b;
+
+  // ---- Small helpers ----
+  const parse = s => new Date(s + 'T00:00:00Z');
+  const dayOnly = s => { const d = parse(s); return MN[d.getUTCMonth()] + ' ' + d.getUTCDate(); };
+  const wkShort = s => dayOnly(s) + " '" + String(parse(s).getUTCFullYear()).slice(2);
+  const wkLong = s => dayOnly(s) + ', ' + parse(s).getUTCFullYear();
+  const monthName = mo => { const p = mo.split('-'); return MN[+p[1] - 1] + ' ' + p[0]; };
+  const weekStartOf = ds => { const d = parse(ds); d.setUTCDate(d.getUTCDate() - d.getUTCDay()); return d.toISOString().slice(0, 10); };  // Sunday on or before
+  const sum = a => a.reduce((x, y) => x + y, 0);
+  const mean = a => sum(a) / a.length;
+  const median = a => { const s = a.slice().sort((x, y) => x - y); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+  const pct = x => (x >= 0 ? '+' : '') + (x * 100).toFixed(1) + '%';
+  const sg = v => { const r = Math.round(v * 100) / 100; return (r > 0 ? '+' : '') + (r === 0 ? '0.00' : r.toFixed(2)); };
+  const M = v => (v / 1e6).toFixed(2) + 'M';
+  const K = v => '$' + Math.round(v / 1000) + 'K';
+  const rng = a => Math.min(...a) === Math.max(...a) ? String(Math.min(...a)) : Math.min(...a) + ' to ' + Math.max(...a);
+
+  // ---- Our weekly data, joined by week_start ----
+  const cos = D.sales_weekly.filter(r => r.brand === COS).sort((a, b) => a.week_start < b.week_start ? -1 : 1);
+  const weeks = cos.map(r => r.week_start);
+  const sales = new Map(cos.map(r => [r.week_start, r]));
+  const amz = new Map(D.amazon_reviews_weekly.filter(r => r.brand === COS).map(r => [r.week_start, r]));
+  const media = new Map();                       // week -> {channel: spend}
+  D.media_spend_weekly.filter(r => r.brand === COS).forEach(r => {
+    if (!media.has(r.week_start)) media.set(r.week_start, {});
+    const o = media.get(r.week_start); o[r.channel] = (o[r.channel] || 0) + r.spend_usd;
+  });
+  const promos = new Map();                      // week -> [promo rows]
+  D.retail_promos_weekly.forEach(r => { if (!promos.has(r.week_start)) promos.set(r.week_start, []); promos.get(r.week_start).push(r); });
+  const evByWeek = new Map();                    // week -> [events]
+  D.events.forEach(e => { const w = weekStartOf(e.date); if (!evByWeek.has(w)) evByWeek.set(w, []); evByWeek.get(w).push(e); });
+  const sentRows = new Map();                    // month -> COS price sentiment row
+  D.sentiment_topic.filter(r => r.brand === COS && r.topic === 'price').forEach(r => sentRows.set(r.month, r));
+  const months = Array.from(sentRows.keys()).sort();
+
+  // ---- The tariff and the two 8-week windows ----
+  // "Before" = the 8 weeks ending with the week that contains the tariff date; "after" = the next 8 weeks.
+  const tEv = D.events.find(e => e.is_real === 1 && /tariff/i.test(e.headline)) || { date: '2026-07-24', brand: 'Category', headline: 'US tariff takes effect' };
+  const tWeek = weekStartOf(tEv.date);
+  const tIdx = weeks.indexOf(tWeek);
+  if (tIdx < 7 || tIdx + 8 >= weeks.length) { document.getElementById('c3-findings').textContent = 'Not enough weeks around the tariff date.'; return; }
+  const tFrac = (parse(tEv.date) - parse(tWeek)) / 86400000 / 7;
+  const bIdx = [], aIdx = [];
+  for (let i = tIdx - 7; i <= tIdx; i++) bIdx.push(i);
+  for (let i = tIdx + 1; i <= tIdx + 8; i++) aIdx.push(i);
+
+  const units = w => sales.get(w).units, price = w => sales.get(w).avg_price;
+  const col = (idxs, f) => idxs.map(i => f(weeks[i]));
+  const uB = sum(col(bIdx, units)), uA = sum(col(aIdx, units));
+  const unitsChg = uA / uB - 1;
+  const pB = mean(col(bIdx, price)), pA = mean(col(aIdx, price));
+  const priceChg = pA / pB - 1;
+  const amzB = mean(col(bIdx, w => amz.get(w).price_sentiment)), amzA = mean(col(aIdx, w => amz.get(w).price_sentiment));
+
+  // Other brands over the same weeks
+  const salesBy = new Map();
+  D.sales_weekly.forEach(r => { if (!salesBy.has(r.brand)) salesBy.set(r.brand, new Map()); salesBy.get(r.brand).set(r.week_start, r); });
+  const brandChg = b => { const m = salesBy.get(b);
+    return { units: sum(aIdx.map(i => m.get(weeks[i]).units)) / sum(bIdx.map(i => m.get(weeks[i]).units)) - 1,
+             price: mean(aIdx.map(i => m.get(weeks[i]).avg_price)) / mean(bIdx.map(i => m.get(weeks[i]).avg_price)) - 1 }; };
+  const RIVALS = ['StarKist', 'Bumble Bee', 'Wild Planet', 'Safe Catch', 'Fishwife'];
+  const tot = new Map(); D.sales_weekly.forEach(r => tot.set(r.week_start, (tot.get(r.week_start) || 0) + r.units));
+  const allChg = sum(aIdx.map(i => tot.get(weeks[i]))) / sum(bIdx.map(i => tot.get(weeks[i]))) - 1;
+
+  // Our media over the same weeks
+  const chSum = (idxs, c) => sum(idxs.map(i => (media.get(weeks[i]) || {})[c] || 0));
+  const mTotB = sum(CH.map(c => chSum(bIdx, c))), mTotA = sum(CH.map(c => chSum(aIdx, c)));
+  const amzAdsChg = chSum(aIdx, 'Amazon Ads') / chSum(bIdx, 'Amazon Ads') - 1;
+  const socChg = chSum(aIdx, SOC) / chSum(bIdx, SOC) - 1;
+  const socSeries = weeks.map(w => (media.get(w) || {})[SOC] || 0);
+  const socMed = median(socSeries);
+  const surge = weeks.map((w, i) => i).filter(i => i > tIdx && socSeries[i] > 2 * socMed);   // weeks of heavy social spend
+
+  // ---- Headline tiles ----
+  const iM = months.indexOf(tEv.date.slice(0, 7));
+  const mA = months[Math.max(iM - 2, 0)], mZ = months[months.length - 1];
+  document.getElementById('c3-hint').textContent =
+    'Windows: the 8 weeks ending ' + dayOnly(tWeek) + ' (the week that contains the ' + dayOnly(tEv.date) + ' tariff) vs the 8 weeks from ' +
+    dayOnly(weeks[aIdx[0]]) + '. Price is the simple average of weekly average shelf price.';
+  const tile = (lab, val, sub) => '<div class="tile"><p class="lab">' + lab + '</p><p class="val">' + val + '</p><p class="sub">' + sub + '</p></div>';
+  document.getElementById('c3-tiles').innerHTML =
+    tile('Weekly units, after vs before', pct(unitsChg), M(uA / 8) + ' vs ' + M(uB / 8) + ' per week') +
+    tile('Average shelf price, after vs before', pct(priceChg), '$' + pA.toFixed(2) + ' vs $' + pB.toFixed(2)) +
+    tile('Price sentiment in comments', sg(sentRows.get(mA).score) + ' to ' + sg(sentRows.get(mZ).score), monthName(mA) + ' to ' + monthName(mZ));
+
+  // ---- Findings (numbers computed from the data) ----
+  const preN = [months[iM - 1], months[iM]].map(m => sentRows.get(m).n_comments);
+  const postN = months.slice(iM + 1).map(m => sentRows.get(m).n_comments);
+  const sentSeriesTxt = months.slice(Math.max(iM - 2, 0)).map(m => monthName(m).slice(0, 3) + ' ' + sg(sentRows.get(m).score)).join(', ');
+  const rChg = RIVALS.map(b => ({ b, ...brandChg(b) }));
+  const priceUp = rChg.filter(r => r.price > priceChg).map(r => r.b + ' (' + pct(r.price) + ')');
+  const f3 = [];
+  f3.push('<strong>Units fell sharply while the shelf price barely moved.</strong> In the 8 weeks from ' + dayOnly(weeks[aIdx[0]]) +
+    ', weekly units ran ' + pct(unitsChg) + ' against the 8 weeks ending ' + dayOnly(tWeek) + ', while average shelf price rose only ' + pct(priceChg) +
+    ' ($' + pB.toFixed(2) + ' to $' + pA.toFixed(2) + '). Price sentiment in comments went ' + sentSeriesTxt + ', and the Amazon review price score averaged ' + sg(amzB) +
+    ' before and ' + sg(amzA) + ' after. The slide started before the tariff, but ' + rng(preN) + ' comments back the two pre-tariff months against ' + rng(postN) +
+    ' for each month since, so the lower level looks real while its exact starting point is fuzzy. The plan proposes +8% list price, and this is the only price move in the data to compare it with.');
+  f3.push('<strong>Rivals dipped much less.</strong> Over the same weeks the five other brands in the table below changed ' + pct(Math.min(...rChg.map(r => r.units))) +
+    ' to ' + pct(Math.max(...rChg.map(r => r.units))) + ' in units, and all ' + salesBy.size + ' brands combined (including us) changed ' + pct(allChg) + '. ' +
+    (priceUp.length ? priceUp.join(' and ') + ' raised average price by more than we did and still lost less volume. ' : '') +
+    'A category-wide tariff shock does not explain all of our drop, which points to something specific to us. Our exposure to Thai imports is one possibility the data cannot test. The next finding is another.');
+  const surgeTxt = surge.length
+    ? ' From ' + dayOnly(weeks[surge[0]]) + ' to ' + dayOnly(weeks[surge[surge.length - 1]]) + ' social ran at about ' + (mean(surge.map(i => socSeries[i])) / socMed).toFixed(1) +
+      'x its usual weekly level, and units over those ' + surge.length + ' weeks averaged ' + M(mean(surge.map(i => units(weeks[i])))) + ', still ' +
+      pct(mean(surge.map(i => units(weeks[i]))) / (uB / 8) - 1).replace('-', '') + ' below the before-window average of ' + M(uB / 8) + '.'
+    : '';
+  f3.push('<strong>The tariff was not the only thing that changed.</strong> In the after window our Amazon Ads spend moved ' + pct(amzAdsChg) + ' (' + K(chSum(bIdx, 'Amazon Ads')) +
+    ' to ' + K(chSum(aIdx, 'Amazon Ads')) + ') and social spend moved ' + pct(socChg) + ' (' + K(chSum(bIdx, SOC)) + ' to ' + K(chSum(aIdx, SOC)) + '), while total spend moved only ' +
+    pct(mTotA / mTotB - 1) + '.' + surgeTxt + ' That looks like an early version of the plan\'s own bet (less Amazon, more social) with no visible unit rebound. It is a rough read, not a controlled test, because the tariff and the media shift happened together.');
+  document.getElementById('c3-findings').innerHTML = f3.map(x => '<li>' + x + '</li>').join('');
+
+  // ---- Comparison table ----
+  const us = brandChg(COS);
+  let ch = '<table><caption class="hint" style="text-align:left;caption-side:top;padding:6px 0">Same windows, other brands (change in units and in average shelf price)</caption>' +
+           '<thead><tr><th>Brand</th><th>Units</th><th>Avg price</th></tr></thead><tbody>' +
+           '<tr class="us"><td>' + COS + '</td><td>' + pct(us.units) + '</td><td>' + pct(us.price) + '</td></tr>';
+  rChg.forEach(r => { ch += '<tr><td>' + r.b + '</td><td>' + pct(r.units) + '</td><td>' + pct(r.price) + '</td></tr>'; });
+  ch += '<tr><td>All ' + salesBy.size + ' brands combined</td><td>' + pct(allChg) + '</td><td></td></tr></tbody></table>';
+  document.getElementById('c3-compare').innerHTML = ch;
+
+  // ---- Main chart ----
+  let sel = tIdx, chart = null;
+  function theme() {
+    const cs = getComputedStyle(document.documentElement);
+    const g = n => cs.getPropertyValue(n).trim();
+    return { text: g('--text'), muted: g('--muted'), line: g('--line'), accent: g('--accent') };
+  }
+  const marks = { id: 'c3marks',
+    beforeDatasetsDraw(c) {
+      const a = c.chartArea, x = c.scales.x, ctx = c.ctx;
+      const band = (i0, i1, color) => {
+        const x0 = Math.max(a.left, x.getPixelForValue(i0)), x1 = Math.min(a.right, x.getPixelForValue(i1));
+        ctx.fillStyle = color; ctx.fillRect(x0, a.top, x1 - x0, a.bottom - a.top);
+      };
+      ctx.save();
+      band(bIdx[0], tIdx + 1, 'rgba(128,128,128,0.12)');
+      band(tIdx + 1, aIdx[aIdx.length - 1] + 1, 'rgba(224,138,44,0.14)');
+      ctx.restore();
+    },
+    afterDatasetsDraw(c) {
+      const a = c.chartArea, x = c.scales.x, ctx = c.ctx, t = theme();
+      const vline = (px, color, w, dash) => { ctx.setLineDash(dash); ctx.strokeStyle = color; ctx.lineWidth = w;
+        ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke(); ctx.setLineDash([]); };
+      ctx.save(); ctx.font = '12px system-ui, sans-serif'; ctx.fillStyle = t.text; ctx.textAlign = 'left';
+      ctx.fillText('8 weeks before', x.getPixelForValue(bIdx[0]) + 6, a.bottom - 8);
+      ctx.fillText('8 weeks after', x.getPixelForValue(tIdx + 1) + 6, a.bottom - 8);
+      const xt = x.getPixelForValue(tIdx + tFrac);
+      vline(xt, t.text, 1.5, [5, 4]);
+      ctx.textAlign = 'right'; ctx.fillText(dayOnly(tEv.date) + ' tariff', xt - 5, a.top + 14);
+      vline(x.getPixelForValue(sel), t.accent, 2, []);
+      ctx.restore();
+    }
+  };
+  function drawChart() {
+    const t = theme();
+    Chart.defaults.color = t.text; Chart.defaults.borderColor = t.line;
+    Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+    const unitsM = weeks.map(w => units(w) / 1e6);
+    const sentSeries = weeks.map(w => { const r = sentRows.get(w.slice(0, 7)); return r ? r.score : null; });
+    if (chart) chart.destroy();
+    chart = new Chart(document.getElementById('c3-chart'), { type: 'line', plugins: [marks],
+      data: { labels: weeks.map(wkShort), datasets: [
+        { label: 'Weekly units (millions, left axis)', data: unitsM, yAxisID: 'y', borderColor: t.accent, backgroundColor: t.accent,
+          borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0.15 },
+        { label: 'Price sentiment, monthly (right axis)', data: sentSeries, yAxisID: 'y2', borderColor: '#e08a2c', backgroundColor: '#e08a2c',
+          borderWidth: 2.5, borderDash: [6, 4], pointRadius: 0, pointHoverRadius: 4, stepped: true } ] },
+      options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+        onClick: (e, els, c) => { const p = c.getElementsAtEventForMode(e, 'index', { intersect: false }, true); if (p.length) setWeek(p[0].index); },
+        scales: {
+          x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 9 } },
+          y: { position: 'left', min: Math.floor(Math.min(...unitsM)), title: { display: true, text: 'Weekly units (millions)' } },
+          y2: { position: 'right', suggestedMin: -0.1, suggestedMax: 0.4, grid: { drawOnChartArea: false },
+                title: { display: true, text: 'Price sentiment' }, ticks: { callback: v => sg(v) } } },
+        plugins: { legend: { position: 'bottom' },
+          tooltip: { callbacks: { label: c => c.datasetIndex === 0 ? 'Units: ' + c.parsed.y.toFixed(2) + 'M' : 'Price sentiment (month): ' + sg(c.parsed.y) } } } } });
+  }
+
+  // ---- Week drill-down ----
+  const maxChan = Math.max(...Array.from(media.values()).flatMap(o => Object.values(o)));
+  const card = (title, big, lines) => '<div class="wk-card"><h4>' + title + '</h4>' + big +
+    lines.filter(Boolean).map(l => '<p>' + l + '</p>').join('') + '</div>';
+  const slider = document.getElementById('c3-slider');
+  slider.max = weeks.length - 1;
+
+  function renderWeek() {
+    const w = weeks[sel], s = sales.get(w), a = amz.get(w), m = media.get(w) || {};
+    const prev = sel > 0 ? sales.get(weeks[sel - 1]) : null;
+    document.getElementById('c3-wk-title').textContent = 'Week of ' + wkLong(w);
+    let phase;
+    if (sel === tIdx) phase = 'Tariff week. The tariff took effect on ' + wkLong(tEv.date) + ', so most of this week was before it, and it counts in the "before" window.';
+    else if (bIdx.includes(sel)) phase = 'Before window, week ' + (sel - bIdx[0] + 1) + ' of 8.';
+    else if (aIdx.includes(sel)) phase = 'After window, week ' + (sel - tIdx) + ' of 8.';
+    else phase = 'Outside the two comparison windows.';
+    document.getElementById('c3-wk-phase').textContent = phase;
+
+    const cards = [];
+    cards.push(card('Units', '<div class="big">' + M(s.units) + '</div>', [
+      prev ? 'vs prior week: ' + pct(s.units / prev.units - 1) : '',
+      'vs before-window weekly average (' + M(uB / 8) + '): ' + pct(s.units / (uB / 8) - 1)]));
+    cards.push(card('Shelf price (average)', '<div class="big">$' + s.avg_price.toFixed(2) + '</div>', [
+      'vs before-window average ($' + pB.toFixed(2) + '): ' + pct(s.avg_price / pB - 1)]));
+    cards.push(card('Amazon review price sentiment', '<div class="big">' + sg(a.price_sentiment) + '</div>', [
+      a.reviews + ' reviews, ' + Math.round(a.pct_mentioning_price * 100) + '% mention price, rating ' + a.avg_rating.toFixed(2),
+      'Window averages: ' + sg(amzB) + ' before, ' + sg(amzA) + ' after']));
+    const pr = promos.get(w) || [];
+    cards.push(card('Store-brand promotions', pr.length
+      ? '<ul>' + pr.map(p => '<li>' + short(p.retailer) + ': ' + p.discount_pct + '% off store-brand tuna</li>').join('') + '</ul>'
+      : '<p>None logged this week.</p>', []));
+    const total = sum(CH.map(c => m[c] || 0));
+    cards.push(card('Our media spend', '<div class="big">' + K(total) + '</div>',
+      CH.map(c => '<div class="mrow"><span>' + (CH_SHORT[c] || c) + '</span><span class="track"><span class="bar" style="width:' +
+        Math.round((m[c] || 0) / maxChan * 100) + '%"></span></span><span class="val">' + K(m[c] || 0) + '</span></div>')));
+    const ev = evByWeek.get(w) || [];
+    cards.push(card('Events logged', ev.length
+      ? '<ul>' + ev.map(e => '<li>' + e.date + ' (' + short(e.brand) + '): ' + e.headline + '</li>').join('') + '</ul>'
+      : '<p>None logged this week.</p>', []));
+    document.getElementById('c3-wk-grid').innerHTML = cards.join('');
+  }
+  function setWeek(i) {
+    sel = Math.max(0, Math.min(weeks.length - 1, i));
+    slider.value = sel;
+    if (chart) chart.update('none');
+    renderWeek();
+  }
+  slider.addEventListener('input', () => setWeek(+slider.value));
+  document.getElementById('c3-prev').addEventListener('click', () => setWeek(sel - 1));
+  document.getElementById('c3-next').addEventListener('click', () => setWeek(sel + 1));
+
+  drawChart(); setWeek(tIdx);
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawChart);
+})();
+/* CASE3:JS:END */
 </script>
 </body>
 </html>
