@@ -116,8 +116,46 @@
 
   <!-- CASE2:START -->
   <section id="case2">
+    <style>
+      #case2 h3 { font-size: 1.05rem; margin: 26px 0 6px; }
+      #case2 .scroll { overflow-x: auto; }
+      #case2 table.heat { border-collapse: separate; border-spacing: 3px; width: 100%; min-width: 560px; table-layout: fixed; }
+      #case2 table.heat th { font-size: .82rem; font-weight: 600; text-align: center; padding: 4px 2px; text-transform: capitalize; }
+      #case2 table.heat th.rowhead { text-align: left; font-size: .9rem; font-weight: 500; text-transform: none; width: 23%; padding-right: 8px; }
+      #case2 table.heat th.rowhead.us { font-weight: 700; }
+      #case2 button.cell { width: 100%; padding: 12px 2px; border: 2px solid transparent; border-radius: 6px; font: inherit;
+                           font-weight: 600; font-size: .92rem; cursor: pointer; }
+      #case2 button.cell[aria-pressed="true"] { border-color: var(--text); }
+      #case2 button.cell:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+      #case2 tr.leaders td { text-align: center; font-size: .75rem; color: var(--muted); padding: 6px 2px 0; line-height: 1.25; }
+      #case2 tr.leaders th { font-size: .78rem; color: var(--muted); font-weight: 500; text-align: left; padding-top: 6px; }
+      #case2 .legend-line { display: flex; align-items: center; gap: 8px; font-size: .82rem; color: var(--muted); margin-top: 10px; flex-wrap: wrap; }
+      #case2 .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: middle; }
+      #case2 ol.findings { padding-left: 22px; margin: 8px 0 0; }
+      #case2 ol.findings li { margin-bottom: 10px; }
+      #case2 .drill-title { font-weight: 600; margin: 8px 0 0; }
+      #case2 .chart-box { position: relative; width: 100%; height: 300px; }
+    </style>
     <h2>Case 2: What do people think of us vs rivals?</h2>
-    <p class="placeholder">Coming next.</p>
+    <p class="hint" id="c2-hint"></p>
+
+    <h3>Sentiment heatmap, 7 brands by 6 topics</h3>
+    <div class="scroll"><div id="c2-heat"></div></div>
+    <div class="legend-line">
+      <span><span class="swatch" style="background: rgba(192,57,43,.85)"></span> negative</span>
+      <span><span class="swatch" style="background: rgba(128,128,128,.25)"></span> near zero</span>
+      <span><span class="swatch" style="background: rgba(11,79,138,.85)"></span> positive</span>
+      <span>Deeper color means stronger sentiment. Click any cell for the monthly detail.</span>
+    </div>
+
+    <h3>Findings</h3>
+    <ol class="findings" id="c2-findings"></ol>
+
+    <h3>Drill-down: month by month</h3>
+    <p class="drill-title" id="c2-drill-title"></p>
+    <p class="hint" id="c2-drill-sub"></p>
+    <div class="chart-box"><canvas id="c2-drill" role="img" aria-label="Line chart of monthly sentiment for the selected brand and topic next to Chicken of the Sea"></canvas></div>
+    <p class="hint" id="c2-drill-note"></p>
   </section>
   <!-- CASE2:END -->
 
@@ -407,6 +445,159 @@
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderAll);
 })();
 /* CASE1:JS:END */
+/* CASE2:JS:START */
+(function () {
+  const D = window.DATA;
+  const COS = 'Chicken of the Sea';
+  const BRANDS = [COS, 'StarKist', 'Bumble Bee', 'Wild Planet', 'Safe Catch', 'Fishwife', 'Walmart (bettergoods/Great Value)'];
+  const SHORT = { 'Walmart (bettergoods/Great Value)': 'Walmart' };
+  const short = b => SHORT[b] || b;
+  const TOPICS = ['taste', 'texture', 'price', 'packaging', 'mercury', 'sustainability'];
+  const MONTHS = Array.from(new Set(D.sentiment_topic.map(r => r.month))).sort();
+  const LAST3 = MONTHS.slice(-3);
+  const MNAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthLabel = mo => { const p = mo.split('-'); return MNAMES[+p[1] - 1] + " '" + p[0].slice(2); };
+
+  // Lookup: brand|topic|month -> {score, n}
+  const cell = new Map();
+  D.sentiment_topic.forEach(r => cell.set(r.brand + '|' + r.topic + '|' + r.month, { score: r.score, n: r.n_comments }));
+  const get = (b, t, m) => cell.get(b + '|' + t + '|' + m);
+
+  // Simple average of the last 3 months (not weighted by number of comments)
+  const avg = (b, t) => LAST3.reduce((a, m) => a + get(b, t, m).score, 0) / LAST3.length;
+  const A = (b, t) => Math.round(avg(b, t) * 100) / 100;          // rounded, used in text
+  const S = v => { const r = Math.round(v * 100) / 100; return (r > 0 ? '+' : '') + (r === 0 ? '0.00' : r.toFixed(2)); };
+  const rank = (b, t) => 1 + BRANDS.filter(x => A(x, t) > A(b, t)).length;
+  const ord = n => n + ({ 1: 'st', 2: 'nd', 3: 'rd' }[n] || 'th');
+  const leaders = t => { const m = Math.max(...BRANDS.map(b => A(b, t))); return BRANDS.filter(b => A(b, t) === m); };
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+  // Range of comment counts behind each monthly score (for the hint line)
+  const allN = BRANDS.flatMap(b => TOPICS.flatMap(t => MONTHS.map(m => get(b, t, m).n)));
+  document.getElementById('c2-hint').textContent =
+    'Average sentiment from -1 (negative) to +1 (positive). Each cell is the simple average of ' +
+    LAST3.map(monthLabel).join(', ') + '. A single month rests on ' + Math.min(...allN) + ' to ' + Math.max(...allN) +
+    ' comments, so small month-to-month moves are probably noise.';
+
+  // ---- Heatmap ----
+  const state = { brand: 'Wild Planet', topic: 'sustainability' };
+  function cellStyle(v) {
+    const a = Math.min(Math.abs(v) / 0.7, 1);
+    const alpha = 0.12 + 0.78 * a;
+    const rgb = v >= 0 ? '11,79,138' : '192,57,43';
+    return 'background: rgba(' + rgb + ',' + alpha.toFixed(2) + '); color: ' + (alpha > 0.55 ? '#fff' : 'var(--text)') + ';';
+  }
+  function drawHeat() {
+    let h = '<table class="heat"><thead><tr><th class="rowhead"></th>' + TOPICS.map(t => '<th scope="col">' + t + '</th>').join('') + '</tr></thead><tbody>';
+    BRANDS.forEach(b => {
+      h += '<tr><th scope="row" class="rowhead' + (b === COS ? ' us' : '') + '">' + short(b) + (b === COS ? ' (us)' : '') + '</th>';
+      TOPICS.forEach(t => {
+        const v = avg(b, t);
+        const on = (b === state.brand && t === state.topic);
+        h += '<td><button type="button" class="cell" data-brand="' + b + '" data-topic="' + t + '" aria-pressed="' + on + '" ' +
+             'aria-label="' + short(b) + ', ' + t + ', ' + S(v) + '. Click for monthly detail." style="' + cellStyle(v) + '">' + S(v) + '</button></td>';
+      });
+      h += '</tr>';
+    });
+    h += '<tr class="leaders"><th scope="row">Best score</th>' +
+         TOPICS.map(t => '<td>' + leaders(t).map(short).join(' / ') + '</td>').join('') + '</tr></tbody></table>';
+    document.getElementById('c2-heat').innerHTML = h;
+  }
+  document.getElementById('c2-heat').addEventListener('click', e => {
+    const b = e.target.closest('button.cell');
+    if (!b) return;
+    state.brand = b.dataset.brand; state.topic = b.dataset.topic;
+    document.querySelectorAll('#c2-heat button.cell').forEach(x =>
+      x.setAttribute('aria-pressed', String(x.dataset.brand === state.brand && x.dataset.topic === state.topic)));
+    drawDrill();
+  });
+
+  // ---- Findings (all numbers computed from the data) ----
+  function drawFindings() {
+    const byTopic = t => BRANDS.slice().sort((a, b) => A(b, t) - A(a, t));
+    const sTop = byTopic('sustainability').slice(0, 2);
+    const mTop = byTopic('mercury').slice(0, 2);
+    const big3 = [COS, 'StarKist', 'Bumble Bee'];
+    const minGap = Math.min(...['sustainability', 'mercury'].flatMap(t => big3.map(b => A(sTop[0], t) - A(b, t) > 0 ?
+      Math.min(A(mTop[0], t), A(sTop[0], t)) - A(b, t) : 99)));
+    const negMercury = BRANDS.filter(b => A(b, 'mercury') < 0).map(b => short(b) + ' (' + S(A(b, 'mercury')) + ')');
+    const tasteLead = leaders('taste');
+    const items = [
+      '<strong>Sustainability is not where we win.</strong> We score ' + S(A(COS, 'sustainability')) + ', ' + ord(rank(COS, 'sustainability')) +
+        ' of 7 brands, while ' + short(sTop[0]) + ' (' + S(A(sTop[0], 'sustainability')) + ') and ' + short(sTop[1]) + ' (' + S(A(sTop[1], 'sustainability')) +
+        ') are far ahead. The plan\'s KPI is +0.2 sustainability sentiment, which would take us to about ' + S(A(COS, 'sustainability') + 0.2) +
+        ', still below both of them.',
+      '<strong>Mercury is where the gap is widest.</strong> ' + short(mTop[0]) + ' and ' + short(mTop[1]) + ' score ' + S(A(mTop[0], 'mercury')) +
+        ' and ' + S(A(mTop[1], 'mercury')) + '. The brands below zero on mercury are ' + negMercury.join(', ') + '. Mercury and sustainability are the two topics where the small brands lead and the big three trail, so a "Responsibly Sourced" campaign would invite comparison on the ground where we are weakest.',
+      '<strong>Our strengths are taste and texture, and price is flat.</strong> Taste (' + S(A(COS, 'taste')) + ') is within ' +
+        (A(tasteLead[0], 'taste') - A(COS, 'taste')).toFixed(2) + ' of the best score (' + tasteLead.map(short).join(' and ') + ' at ' + S(A(tasteLead[0], 'taste')) +
+        '), and texture (' + S(A(COS, 'texture')) + ') ranks ' + ord(rank(COS, 'texture')) + ' of 7. Price is ' + S(A(COS, 'price')) + ' (' + ord(rank(COS, 'price')) +
+        ' of 7), far behind Walmart (' + S(A('Walmart (bettergoods/Great Value)', 'price')) + '). Fishwife is the only brand clearly negative on price (' +
+        S(A('Fishwife', 'price')) + ') despite the best packaging score (' + S(A('Fishwife', 'packaging')) + '), which hints that premium tinned fish is a price-sensitive space.'
+    ];
+    document.getElementById('c2-findings').innerHTML = items.map(x => '<li>' + x + '</li>').join('');
+  }
+
+  // ---- Drill-down chart ----
+  let chart = null;
+  function theme() {
+    const cs = getComputedStyle(document.documentElement);
+    const g = n => cs.getPropertyValue(n).trim();
+    return { text: g('--text'), muted: g('--muted'), line: g('--line'), accent: g('--accent') };
+  }
+  // Dashed marker at the tariff month, only on the price topic
+  const tariffLine = { id: 'tariffLine', afterDatasetsDraw(c) {
+    if (state.topic !== 'price') return;
+    const i = MONTHS.indexOf('2026-07'); if (i < 0) return;
+    const x = c.scales.x.getPixelForValue(i), a = c.chartArea, t = theme();
+    const ctx = c.ctx; ctx.save();
+    ctx.setLineDash([5, 4]); ctx.strokeStyle = t.muted; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, a.top); ctx.lineTo(x, a.bottom); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle = t.text; ctx.font = '12px system-ui, sans-serif';
+    ctx.fillText('Jul 24 tariff', x + 5, a.top + 12);
+    ctx.restore();
+  }};
+  function drawDrill() {
+    const t = theme();
+    Chart.defaults.color = t.text; Chart.defaults.borderColor = t.line;
+    Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+    const b = state.brand, tp = state.topic;
+    const series = br => MONTHS.map(m => get(br, tp, m).score);
+    const style = (label, data, color, dash) => ({ label, data, borderColor: color, backgroundColor: color,
+      borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 5, tension: 0.2, borderDash: dash || [] });
+    let datasets;
+    if (b === COS) {
+      const others = BRANDS.filter(x => x !== COS);
+      const otherAvg = MONTHS.map(m => others.reduce((a, x) => a + get(x, tp, m).score, 0) / others.length);
+      datasets = [style(COS, series(COS), t.accent), style('Average of the other 6 brands', otherAvg, '#e08a2c', [6, 4])];
+    } else {
+      datasets = [style(short(b), series(b), '#e08a2c'), style(COS, series(COS), t.accent)];
+    }
+    document.getElementById('c2-drill-title').textContent =
+      cap(tp) + ': ' + (b === COS ? COS + ' vs the other 6 brands' : short(b) + ' vs ' + COS) + ', month by month';
+    const last = A(b, tp), cosLast = A(COS, tp);
+    document.getElementById('c2-drill-sub').textContent = b === COS
+      ? 'Last 3 months: ' + S(cosLast) + '. Click a different cell in the heatmap to compare us with a rival.'
+      : 'Last 3 months: ' + short(b) + ' ' + S(last) + ', ' + COS + ' ' + S(cosLast) + ' (gap ' + S(last - cosLast) + ').';
+    const ns = MONTHS.map(m => get(b, tp, m).n);
+    document.getElementById('c2-drill-note').textContent =
+      'Each month for ' + short(b) + ' rests on ' + Math.min(...ns) + ' to ' + Math.max(...ns) + ' comments.' +
+      (tp === 'price' ? ' The dashed line marks the month of the July 24 tariff.' : '');
+    if (chart) chart.destroy();
+    chart = new Chart(document.getElementById('c2-drill'), { type: 'line', plugins: [tariffLine],
+      data: { labels: MONTHS.map(monthLabel), datasets },
+      options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+        scales: { y: { min: -1, max: 1, title: { display: true, text: 'Sentiment (-1 to +1)' },
+                       grid: { color: c => c.tick.value === 0 ? t.muted : t.line } },
+                  x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 13 } } },
+        plugins: { legend: { position: 'bottom' },
+                   tooltip: { callbacks: { label: c => c.dataset.label + ': ' + S(c.parsed.y) } } } } });
+  }
+
+  drawHeat(); drawFindings(); drawDrill();
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawDrill);
+})();
+/* CASE2:JS:END */
 </script>
 </body>
 </html>
