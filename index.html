@@ -64,8 +64,53 @@
 
   <!-- CASE1:START -->
   <section id="case1">
+    <style>
+      #case1 h3 { font-size: 1.05rem; margin: 26px 0 6px; }
+      #case1 .chart-box { position: relative; width: 100%; }
+      #case1 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+      #case1 .chip { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line);
+                     background: transparent; color: var(--text); font: inherit; font-size: .88rem; cursor: pointer; }
+      #case1 .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+      #case1 .chip:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+      #case1 ol.findings { padding-left: 22px; margin: 8px 0 0; }
+      #case1 ol.findings li { margin-bottom: 10px; }
+      #case1 table { border-collapse: collapse; width: 100%; font-size: .88rem; margin-top: 10px; }
+      #case1 th, #case1 td { padding: 5px 8px; text-align: right; border-top: 1px solid var(--line); }
+      #case1 th:first-child, #case1 td:first-child { text-align: left; }
+      #case1 .drill-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      @media (max-width: 700px) { #case1 .drill-grid { grid-template-columns: 1fr; } }
+      #case1 .drill-title { font-weight: 600; margin: 4px 0 0; }
+    </style>
     <h2>Case 1: Who is talking about us, and where?</h2>
-    <p class="placeholder">Coming next.</p>
+    <p class="hint">Share of all brand mentions vs share of all dollar sales, top 8 brands by mentions, over the last 52 weeks.</p>
+
+    <h3>Share of conversation vs share of sales</h3>
+    <div class="chart-box" style="height: 400px;"><canvas id="c1-share" role="img" aria-label="Paired bars comparing share of conversation and share of sales for the top 8 brands"></canvas></div>
+    <p class="hint">Costco (Kirkland Signature) has mentions but no rows in the sales data, so its sales share shows as 0.0%. Click a bar, or pick a brand below, to drill down.</p>
+
+    <h3>Where each brand gets talked about</h3>
+    <div class="chart-box" style="height: 230px;"><canvas id="c1-channel" role="img" aria-label="Stacked bars showing each brand's mentions split across Amazon, Reddit, Social and YouTube"></canvas></div>
+    <div id="c1-channel-table"></div>
+
+    <h3>Findings</h3>
+    <ol class="findings" id="c1-findings"></ol>
+
+    <h3>Drill-down: weekly mentions and sales</h3>
+    <div class="chips" id="c1-chips"></div>
+    <p class="drill-title" id="c1-drill-title"></p>
+    <div class="drill-grid">
+      <div>
+        <p class="hint">Weekly mentions (all sources)</p>
+        <div class="chart-box" style="height: 240px;"><canvas id="c1-drill-mentions" role="img" aria-label="Line chart of weekly mentions for the selected brand"></canvas></div>
+      </div>
+      <div>
+        <p class="hint">Weekly sales ($ millions)</p>
+        <div class="chart-box" style="height: 240px;">
+          <canvas id="c1-drill-sales" role="img" aria-label="Line chart of weekly dollar sales for the selected brand"></canvas>
+          <p id="c1-no-sales" class="placeholder" hidden>No sales rows for this brand in the sales data.</p>
+        </div>
+      </div>
+    </div>
   </section>
   <!-- CASE1:END -->
 
@@ -106,6 +151,7 @@
 
 </main>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="data.js"></script>
 <script>
   // ---- Plan on trial: the five moves from the FY2027 plan brief ----
@@ -160,7 +206,207 @@
   renderMoves();
 
   // Case code is added in later steps
-  /* CASE1:JS:START */ /* CASE1:JS:END */
+  /* CASE1:JS:START */
+(function () {
+  const D = window.DATA;
+  const COS = 'Chicken of the Sea';
+  const SOURCES = ['Amazon', 'Reddit', 'Social', 'YouTube'];
+  const CHANNEL_BRANDS = [COS, 'StarKist', 'Wild Planet', 'Fishwife'];
+  const SOURCE_COLORS = ['#c96a12', '#c23b4e', '#0a7c6e', '#6a4bb8'];
+  const SALES_COLOR = '#e08a2c';
+
+  // ---- Totals by brand, by source and by week ----
+  const mentTotal = new Map(), salesTotal = new Map();
+  const mentBySource = new Map();       // brand -> {source: mentions}
+  const weeklyMent = new Map(), weeklySales = new Map();   // brand -> Map(week -> value)
+  let allMent = 0, allSales = 0;
+  const weekSet = new Set();
+
+  function add2(map, brand, week, v) {
+    if (!map.has(brand)) map.set(brand, new Map());
+    const m = map.get(brand);
+    m.set(week, (m.get(week) || 0) + v);
+  }
+  D.mentions_weekly.forEach(r => {
+    mentTotal.set(r.brand, (mentTotal.get(r.brand) || 0) + r.mentions);
+    allMent += r.mentions;
+    if (!mentBySource.has(r.brand)) mentBySource.set(r.brand, {});
+    const s = mentBySource.get(r.brand);
+    s[r.source] = (s[r.source] || 0) + r.mentions;
+    add2(weeklyMent, r.brand, r.week_start, r.mentions);
+    weekSet.add(r.week_start);
+  });
+  D.sales_weekly.forEach(r => {
+    salesTotal.set(r.brand, (salesTotal.get(r.brand) || 0) + r.dollars);
+    allSales += r.dollars;
+    add2(weeklySales, r.brand, r.week_start, r.dollars);
+  });
+  const weeks = Array.from(weekSet).sort();
+
+  const convPct = b => (mentTotal.get(b) || 0) / allMent * 100;
+  const salesPct = b => (salesTotal.get(b) || 0) / allSales * 100;
+  const f1 = n => n.toFixed(1);
+  const channelPct = b => {
+    const s = mentBySource.get(b) || {};
+    const tot = SOURCES.reduce((a, k) => a + (s[k] || 0), 0);
+    return SOURCES.map(k => (s[k] || 0) / tot * 100);
+  };
+
+  // Top 8 brands by mentions
+  const top8 = Array.from(mentTotal.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8).map(e => e[0]);
+  const rows = top8.map(b => ({ brand: b, conv: convPct(b), sales: salesPct(b) }));
+
+  // ---- Chart helpers ----
+  const charts = {};
+  function make(id, cfg) {
+    if (charts[id]) charts[id].destroy();
+    charts[id] = new Chart(document.getElementById(id), cfg);
+  }
+  function theme() {
+    const cs = getComputedStyle(document.documentElement);
+    const g = n => cs.getPropertyValue(n).trim();
+    return { text: g('--text'), muted: g('--muted'), line: g('--line'), accent: g('--accent') };
+  }
+  // Small plugins to print numbers on the bars
+  const endLabels = { id: 'endLabels', afterDatasetsDraw(chart) {
+    const ctx = chart.ctx; ctx.save(); ctx.font = '12px system-ui, sans-serif';
+    ctx.fillStyle = theme().text; ctx.textBaseline = 'middle';
+    chart.data.datasets.forEach((ds, i) => chart.getDatasetMeta(i).data.forEach((bar, j) => {
+      ctx.fillText(ds.data[j].toFixed(1) + '%', bar.x + 4, bar.y);
+    }));
+    ctx.restore();
+  }};
+  const segLabels = { id: 'segLabels', afterDatasetsDraw(chart) {
+    const ctx = chart.ctx; ctx.save(); ctx.font = '600 12px system-ui, sans-serif';
+    ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+    chart.data.datasets.forEach((ds, i) => chart.getDatasetMeta(i).data.forEach((bar, j) => {
+      if (ds.data[j] >= 8) ctx.fillText(Math.round(ds.data[j]) + '%', (bar.x + bar.base) / 2, bar.y);
+    }));
+    ctx.restore();
+  }};
+
+  // ---- Drill-down state ----
+  let selected = COS;
+  const chipBox = document.getElementById('c1-chips');
+  function buildChips() {
+    chipBox.innerHTML = '';
+    top8.forEach(b => {
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'chip'; btn.textContent = b;
+      btn.setAttribute('aria-pressed', String(b === selected));
+      btn.addEventListener('click', () => select(b));
+      chipBox.appendChild(btn);
+    });
+  }
+  function select(brand) {
+    selected = brand;
+    Array.from(chipBox.children).forEach(c => c.setAttribute('aria-pressed', String(c.textContent === brand)));
+    drawDrill();
+  }
+  function lineCfg(label, data, color, t, fmt) {
+    return { type: 'line',
+      data: { labels: weeks, datasets: [{ label, data, borderColor: color, backgroundColor: color,
+              pointRadius: 0, pointHoverRadius: 4, borderWidth: 2, tension: 0.2 }] },
+      options: { responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        scales: { x: { ticks: { maxTicksLimit: 6, maxRotation: 0 } }, y: { beginAtZero: true,
+                  ticks: { callback: v => fmt(v) } } },
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => fmt(c.parsed.y) } } } } };
+  }
+  function drawDrill() {
+    const t = theme();
+    document.getElementById('c1-drill-title').textContent =
+      selected + ': ' + f1(convPct(selected)) + '% of conversation, ' + f1(salesPct(selected)) + '% of sales';
+    const wm = weeklyMent.get(selected) || new Map();
+    make('c1-drill-mentions', lineCfg('Mentions', weeks.map(w => wm.get(w) || 0), t.accent, t, v => Math.round(v).toLocaleString()));
+    const ws = weeklySales.get(selected);
+    const canvas = document.getElementById('c1-drill-sales');
+    const note = document.getElementById('c1-no-sales');
+    if (ws) {
+      canvas.hidden = false; note.hidden = true;
+      make('c1-drill-sales', lineCfg('Sales ($M)', weeks.map(w => (ws.get(w) || 0) / 1e6), SALES_COLOR, t, v => '$' + v.toFixed(2) + 'M'));
+    } else {
+      if (charts['c1-drill-sales']) { charts['c1-drill-sales'].destroy(); delete charts['c1-drill-sales']; }
+      canvas.hidden = true; note.hidden = false;
+    }
+  }
+
+  // ---- Main charts ----
+  function drawMain() {
+    const t = theme();
+    Chart.defaults.color = t.text;
+    Chart.defaults.borderColor = t.line;
+    Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+
+    make('c1-share', { type: 'bar', plugins: [endLabels],
+      data: { labels: rows.map(r => r.brand), datasets: [
+        { label: 'Share of conversation', data: rows.map(r => +r.conv.toFixed(1)), backgroundColor: t.accent },
+        { label: 'Share of sales', data: rows.map(r => +r.sales.toFixed(1)), backgroundColor: SALES_COLOR } ] },
+      options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        layout: { padding: { right: 40 } },
+        interaction: { mode: 'index', axis: 'y', intersect: false },
+        onClick: (e, els) => { if (els.length) select(rows[els[0].index].brand); },
+        onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
+        scales: { x: { beginAtZero: true, title: { display: true, text: '% of total' } }, y: { ticks: { autoSkip: false } } },
+        plugins: { legend: { position: 'bottom' },
+          tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.x.toFixed(1) + '%' } } } } });
+
+    make('c1-channel', { type: 'bar', plugins: [segLabels],
+      data: { labels: CHANNEL_BRANDS, datasets: SOURCES.map((s, i) => ({
+        label: s, data: CHANNEL_BRANDS.map(b => channelPct(b)[i]), backgroundColor: SOURCE_COLORS[i] })) },
+      options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        onClick: (e, els) => { if (els.length) select(CHANNEL_BRANDS[els[0].index]); },
+        onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
+        scales: { x: { stacked: true, max: 100, title: { display: true, text: '% of that brand\'s mentions' } },
+                  y: { stacked: true } },
+        plugins: { legend: { position: 'bottom' },
+          tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.x.toFixed(1) + '%' } } } } });
+  }
+
+  // ---- Channel table (the same numbers as the chart, readable without hovering) ----
+  function drawTable() {
+    let h = '<table><thead><tr><th>Brand</th>' + SOURCES.map(s => '<th>' + s + '</th>').join('') + '</tr></thead><tbody>';
+    CHANNEL_BRANDS.forEach(b => {
+      h += '<tr><td>' + b + '</td>' + channelPct(b).map(v => '<td>' + Math.round(v) + '%</td>').join('') + '</tr>';
+    });
+    document.getElementById('c1-channel-table').innerHTML = h + '</tbody></table>';
+  }
+
+  // ---- Findings (numbers are computed from the data, not typed in) ----
+  function drawFindings() {
+    const big3 = [COS, 'StarKist', 'Bumble Bee'];
+    const big3Conv = big3.reduce((a, b) => a + convPct(b), 0);
+    const big3Sales = big3.reduce((a, b) => a + salesPct(b), 0);
+    const cosCh = channelPct(COS);
+    const cosRanked = SOURCES.map((s, i) => ({ s, v: cosCh[i] })).sort((a, b) => b.v - a.v);
+    const cosSocial = cosCh[SOURCES.indexOf('Social')];
+    const fwSocial = channelPct('Fishwife')[SOURCES.indexOf('Social')];
+    const others = ['StarKist', 'Wild Planet'].map(b => Math.round(channelPct(b)[SOURCES.indexOf('Social')]));
+
+    const items = [
+      '<strong>Buzz is not sales.</strong> Fishwife has ' + f1(convPct('Fishwife')) + '% of the conversation but ' +
+        f1(salesPct('Fishwife')) + '% of sales, and Patagonia Provisions has ' + f1(convPct('Patagonia Provisions')) +
+        '% of conversation against ' + f1(salesPct('Patagonia Provisions')) + '% of sales. Being talked about a lot has not turned into volume for these brands.',
+      '<strong>Our gap is the mass brands\' gap.</strong> We have ' + f1(convPct(COS)) + '% of conversation and ' +
+        f1(salesPct(COS)) + '% of sales. StarKist and Bumble Bee show the same pattern, so the three together hold ' +
+        f1(big3Conv) + '% of conversation but ' + f1(big3Sales) + '% of sales. The plan\'s 20% conversation target is about where our sales share already sits, so it is worth asking what sales result it is supposed to produce.',
+      '<strong>Our conversation is not mainly on social.</strong> ' + cosRanked.map(o => o.s + ' ' + Math.round(o.v) + '%').join(', ') +
+        ' for our mentions: only ' + Math.round(cosSocial) + '% is on social, and the four channels are within a few points of each other. StarKist and Wild Planet look similar (' +
+        others.join('% and ') + '% social). Fishwife is the outlier at ' + Math.round(fwSocial) + '%. The plan puts 60% of media into social, which is far above the share of our own conversation that lives there. This shows where people talk, not where they are persuaded to buy, so it does not settle the question by itself.'
+    ];
+    document.getElementById('c1-findings').innerHTML = items.map(x => '<li>' + x + '</li>').join('');
+  }
+
+  function renderAll() { drawMain(); drawDrill(); }
+
+  buildChips();
+  drawTable();
+  drawFindings();
+  renderAll();
+  // Redraw if the visitor's light/dark setting changes
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderAll);
+})();
+/* CASE1:JS:END */
 </script>
 </body>
 </html>
